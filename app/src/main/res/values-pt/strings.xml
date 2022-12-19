@@ -495,9 +495,8 @@
     <string name="hide_category_hopper">Esconder seletor de categorias</string>
     <string name="category_cannot_be_blank">O nome da categoria não pode ficar vazio</string>
     <plurals name="chapters_plural">
-        <item quantity="one">%1$d capítulo</item>
-        <item quantity="many">%1$d capítulos</item>
-        <item quantity="other">%1$d capítulos</item>
+        <item quantity="one">%1$s capítulo</item>
+        <item quantity="other">%1$s capítulos</item>
     </plurals>
     <string name="add_x_to">Adicionar %1$s a…</string>
     <string name="move_x_to">Mover %1$s para…</string>
@@ -1072,7 +1071,6 @@
     <string name="stats">Estatísticas</string>
     <string name="download_ahead">Transferência em antecedência</string>
     <string name="statistics_details">Detalhes de estatísticas</string>
-    <string name="mean_score">Avaliação média</string>
     <string name="tags">Etiquetas</string>
     <string name="read_duration">Duração de leitura</string>
     <string name="manga_status_distribution">Distribuição das estatísticas</string>
@@ -1103,4 +1101,5 @@
     <string name="must_view_details_before_migration">Os detalhes desta entrada devem ser vistos antes de ser capaz de migrar</string>
     <string name="not_rated">Não avaliados</string>
     <string name="view_all">Veja todos</string>
+    <string name="skipped_reason_not_always_update">Ignorado porque a série não requer atualizações</string>
 </resources>

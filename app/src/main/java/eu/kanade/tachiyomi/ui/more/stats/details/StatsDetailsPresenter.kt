@@ -13,6 +13,7 @@ import eu.kanade.tachiyomi.data.database.models.MangaChapterHistory
 import eu.kanade.tachiyomi.data.database.models.Track
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.data.track.TrackManager
+import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.source.LocalSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceManager
@@ -28,6 +29,7 @@ import eu.kanade.tachiyomi.util.system.roundToTwoDecimal
 import eu.kanade.tachiyomi.util.system.withUIContext
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import uy.kohesive.injekt.injectLazy
 import java.util.Calendar
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -35,12 +37,13 @@ import kotlin.math.roundToInt
 
 class StatsDetailsPresenter(
     private val db: DatabaseHelper = Injekt.get(),
-    prefs: PreferencesHelper = Injekt.get(),
-    private val trackManager: TrackManager = Injekt.get(),
+    private val prefs: PreferencesHelper = Injekt.get(),
+    val trackManager: TrackManager = Injekt.get(),
     private val sourceManager: SourceManager = Injekt.get(),
 ) : BaseCoroutinePresenter<StatsDetailsController>() {
 
-    private var context = prefs.context
+    private val context
+        get() = controller?.view?.context ?: prefs.context
     var libraryMangas = getLibrary()
         set(value) {
             field = value
@@ -48,6 +51,8 @@ class StatsDetailsPresenter(
         }
     private var mangasDistinct = libraryMangas.distinct()
     val sources = getEnabledSources()
+    val extensionManager by injectLazy<ExtensionManager>()
+    val isMultiLingual = prefs.enabledLanguages().get().filterNot { it == "all" }.size > 1
 
     var selectedStat: Stats? = null
     var selectedSeriesType = mutableSetOf<String>()
@@ -68,41 +73,45 @@ class StatsDetailsPresenter(
         timeInMillis = startDate.timeInMillis - 1
         add(Calendar.WEEK_OF_YEAR, 1)
     }
+    private var daysRange = getDaysRange()
     var history = getMangaHistoryGroupedByDay()
     var historyByDayAndManga = emptyMap<Calendar, Map<Manga, List<History>>>()
 
     var currentStats: ArrayList<StatsData>? = null
-    val seriesTypeStats = arrayOf(
-        context.getString(R.string.manga),
-        context.getString(R.string.manhwa),
-        context.getString(R.string.manhua),
-        context.getString(R.string.comic),
-        context.getString(R.string.webtoon),
-    )
-    val statusStats = arrayOf(
-        context.getString(R.string.ongoing),
-        context.getString(R.string.completed),
-        context.getString(R.string.licensed),
-        context.getString(R.string.publishing_finished),
-        context.getString(R.string.cancelled),
-        context.getString(R.string.on_hiatus),
-    )
-    private val defaultCategory =
-        if (libraryMangas.any { it.category == 0 }) arrayOf(Category.createDefault(context)) else emptyArray()
-    val categoriesStats = defaultCategory + getCategories().toTypedArray()
-    val languagesStats = prefs.enabledLanguages().get().map { lang -> LocaleHelper.getSourceDisplayName(lang, context) }
-        .sorted().toTypedArray()
-
-    private val pieColorList = StatsHelper.PIE_CHART_COLOR_LIST
-
-    override fun onCreate() {
-        super.onCreate()
+    val seriesTypeStats by lazy {
+        arrayOf(
+            context.getString(R.string.manga),
+            context.getString(R.string.manhwa),
+            context.getString(R.string.manhua),
+            context.getString(R.string.comic),
+            context.getString(R.string.webtoon),
+        )
     }
+    val statusStats by lazy {
+        arrayOf(
+            context.getString(R.string.ongoing),
+            context.getString(R.string.completed),
+            context.getString(R.string.licensed),
+            context.getString(R.string.publishing_finished),
+            context.getString(R.string.cancelled),
+            context.getString(R.string.on_hiatus),
+        )
+    }
+    private val defaultCategory by lazy {
+        if (libraryMangas.any { it.category == 0 }) arrayOf(Category.createDefault(context)) else emptyArray()
+    }
+    val categoriesStats by lazy { defaultCategory + getCategories().toTypedArray() }
+    val languagesStats by lazy {
+        prefs.enabledLanguages().get()
+            .associateWith { lang -> LocaleHelper.getSourceDisplayName(lang, context) }
+            .toSortedMap()
+    }
+    private val pieColorList = StatsHelper.PIE_CHART_COLOR_LIST
 
     /**
      * Get the data of the selected stat
      */
-    fun getStatisticData() {
+    fun getStatisticData(keepAdapter: Boolean = false) {
         if (selectedStat == null || selectedStatsSort == null) {
             return
         }
@@ -122,7 +131,7 @@ class StatsDetailsPresenter(
                 Stats.READ_DURATION -> setupReadDuration()
                 else -> {}
             }
-            withUIContext { controller?.updateStats() }
+            withUIContext { controller?.updateStats(keepAdapter = keepAdapter) }
         }
     }
 
@@ -138,7 +147,7 @@ class StatsDetailsPresenter(
                     meanScore = mangaList.getMeanScoreRounded(),
                     chaptersRead = mangaList.sumOf { it.read },
                     totalChapters = mangaList.sumOf { it.totalChapters },
-                    label = context.mapSeriesType(seriesType).uppercase(),
+                    label = context.mapSeriesType(seriesType),
                     readDuration = mangaList.getReadDuration(),
                 ),
             )
@@ -158,7 +167,7 @@ class StatsDetailsPresenter(
                     meanScore = mangaList.getMeanScoreRounded(),
                     chaptersRead = mangaList.sumOf { it.read },
                     totalChapters = mangaList.sumOf { it.totalChapters },
-                    label = context.mapStatus(status).uppercase(),
+                    label = context.mapStatus(status),
                     readDuration = mangaList.getReadDuration(),
                 ),
             )
@@ -180,8 +189,9 @@ class StatsDetailsPresenter(
                     meanScore = score?.toDouble() ?: 0.0,
                     chaptersRead = mangaList?.sumOf { it.read } ?: 0,
                     totalChapters = mangaList?.sumOf { it.totalChapters } ?: 0,
-                    label = score?.toString() ?: context.getString(R.string.not_rated).uppercase(),
+                    label = score?.toString() ?: context.getString(R.string.not_rated),
                     readDuration = mangaList?.getReadDuration() ?: 0L,
+                    id = score?.toLong(),
                 ),
             )
         }
@@ -199,7 +209,7 @@ class StatsDetailsPresenter(
                     meanScore = mangaList.getMeanScoreRounded(),
                     chaptersRead = mangaList.sumOf { it.read },
                     totalChapters = mangaList.sumOf { it.totalChapters },
-                    label = language.uppercase(),
+                    label = language,
                     readDuration = mangaList.getReadDuration(),
                 ),
             )
@@ -210,8 +220,9 @@ class StatsDetailsPresenter(
     private fun setupLength() {
         currentStats = ArrayList()
         var mangaFiltered = mangasDistinct.filterByChip()
-        StatsHelper.STATS_LENGTH.forEach { (min, max) ->
-            val (match, unmatch) = mangaFiltered.partition { it.totalChapters >= min && (max == null || it.totalChapters <= max) }
+        StatsHelper.STATS_LENGTH.forEach { range ->
+            val (min, max) = range.first to range.last.takeIf { it != Int.MAX_VALUE }
+            val (match, unmatch) = mangaFiltered.partition { it.totalChapters in range }
             mangaFiltered = unmatch
             currentStats?.add(
                 StatsData(
@@ -227,6 +238,7 @@ class StatsDetailsPresenter(
                             .replace("-null", "+")
                     },
                     readDuration = match.getReadDuration(),
+                    id = range.last.toLong(),
                 ),
             )
         }
@@ -251,10 +263,11 @@ class StatsDetailsPresenter(
                     meanScore = mangaAndTrack.map { it.second }.getMeanScoreByTracker()?.roundToTwoDecimal(),
                     chaptersRead = mangaAndTrack.sumOf { it.first.read },
                     totalChapters = mangaAndTrack.sumOf { it.first.totalChapters },
-                    label = label.uppercase(),
+                    label = label,
                     iconRes = service?.getLogo(),
                     iconBGColor = service?.getLogoColor(),
                     readDuration = mangaAndTrack.map { it.first }.getReadDuration(),
+                    id = service?.id?.toLong(),
                 ),
             )
         }
@@ -266,8 +279,7 @@ class StatsDetailsPresenter(
         val libraryFormat = mangasDistinct.filterByChip().groupBy { it.source }
 
         libraryFormat.forEach { (sourceId, mangaList) ->
-            val source = sources.find { it.id == sourceId }
-            val sourceName = source?.toString() ?: sourceId.toString()
+            val source = sourceManager.getOrStub(sourceId)
             currentStats?.add(
                 StatsData(
                     color = pieColorList[1],
@@ -275,9 +287,10 @@ class StatsDetailsPresenter(
                     meanScore = mangaList.getMeanScoreRounded(),
                     chaptersRead = mangaList.sumOf { it.read },
                     totalChapters = mangaList.sumOf { it.totalChapters },
-                    label = sourceName.uppercase(),
-                    icon = source?.icon(),
+                    label = source.nameBasedOnEnabledLanguages(isMultiLingual, extensionManager),
+                    icon = source.icon(),
                     readDuration = mangaList.getReadDuration(),
+                    id = sourceId,
                 ),
             )
         }
@@ -298,8 +311,9 @@ class StatsDetailsPresenter(
                     meanScore = mangaList.getMeanScoreRounded(),
                     chaptersRead = mangaList.sumOf { it.read },
                     totalChapters = mangaList.sumOf { it.totalChapters },
-                    label = label.uppercase(),
+                    label = label,
                     readDuration = mangaList.getReadDuration(),
+                    id = category.toLong(),
                 ),
             )
         }
@@ -309,8 +323,12 @@ class StatsDetailsPresenter(
     private fun setupTags() {
         currentStats = ArrayList()
         val mangaFiltered = mangasDistinct.filterByChip()
-        val tags = mangaFiltered.flatMap { it.getTags() }.distinct()
-        val libraryFormat = tags.map { tag -> tag to mangaFiltered.filter { tag in it.getTags() } }
+        val tags = mangaFiltered.flatMap { it.getTags() }.distinctBy { it.uppercase() }
+        val libraryFormat = tags.map { tag ->
+            tag to mangaFiltered.filter {
+                it.getTags().any { mangaTag -> mangaTag.equals(tag, true) }
+            }
+        }
 
         libraryFormat.forEach { (tag, mangaList) ->
             currentStats?.add(
@@ -320,7 +338,7 @@ class StatsDetailsPresenter(
                     meanScore = mangaList.getMeanScoreRounded(),
                     chaptersRead = mangaList.sumOf { it.read },
                     totalChapters = mangaList.sumOf { it.totalChapters },
-                    label = tag.uppercase(),
+                    label = tag,
                     readDuration = mangaList.getReadDuration(),
                 ),
             )
@@ -341,8 +359,9 @@ class StatsDetailsPresenter(
                     meanScore = mangaList.getMeanScoreRounded(),
                     chaptersRead = mangaList.sumOf { it.read },
                     totalChapters = mangaList.sumOf { it.totalChapters },
-                    label = year?.toString() ?: context.getString(R.string.not_started).uppercase(),
+                    label = year?.toString() ?: context.getString(R.string.not_started),
                     readDuration = mangaList.getReadDuration(),
+                    id = year?.toLong(),
                 ),
             )
         }
@@ -369,6 +388,7 @@ class StatsDetailsPresenter(
                     label = manga.title,
                     subLabel = sources.find { it.id == manga.source }?.toString(),
                     readDuration = history.sumOf { it.time_read },
+                    id = manga.id,
                 ),
             )
         }
@@ -379,11 +399,11 @@ class StatsDetailsPresenter(
      * Filter the stat data according to the chips selected
      */
     private fun List<LibraryManga>.filterByChip(): List<LibraryManga> {
-        return this.filterBySeriesType(selectedStat == Stats.SERIES_TYPE)
+        return this.filterByCategory(selectedStat == Stats.CATEGORY)
+            .filterBySeriesType(selectedStat == Stats.SERIES_TYPE)
             .filterByStatus(selectedStat == Stats.STATUS)
             .filterByLanguage(selectedStat == Stats.LANGUAGE || (selectedStat != Stats.SOURCE && selectedSource.isNotEmpty()))
             .filterBySource(selectedStat in listOf(Stats.SOURCE, Stats.LANGUAGE) || selectedLanguage.isNotEmpty())
-            .filterByCategory(selectedStat == Stats.CATEGORY)
     }
 
     private fun List<LibraryManga>.filterBySeriesType(noFilter: Boolean = false): List<LibraryManga> {
@@ -430,9 +450,9 @@ class StatsDetailsPresenter(
         return if (noFilter || selectedCategory.isEmpty()) {
             this
         } else {
-            filter { manga ->
+            libraryMangas.filter { manga ->
                 manga.category in selectedCategory.map { it.id }
-            }
+            }.distinct()
         }
     }
 
@@ -455,7 +475,7 @@ class StatsDetailsPresenter(
     }
 
     private fun Manga.getTags(): List<String> {
-        return getGenres()?.map { it.uppercase() } ?: emptyList()
+        return getGenres() ?: emptyList()
     }
 
     /**
@@ -555,9 +575,7 @@ class StatsDetailsPresenter(
             timeInMillis = startDate.timeInMillis
         }
 
-        val millionSeconds = endDate.timeInMillis - startDate.timeInMillis
-        val days = TimeUnit.MILLISECONDS.toDays(millionSeconds)
-        return (0..days).associate { _ ->
+        return (0 until daysRange).associate { _ ->
             Calendar.getInstance().apply { timeInMillis = calendar.timeInMillis } to history.filter {
                 val calH = Calendar.getInstance().apply { timeInMillis = it.history.last_read }
                 calH.get(Calendar.DAY_OF_YEAR) == calendar.get(Calendar.DAY_OF_YEAR) &&
@@ -578,27 +596,18 @@ class StatsDetailsPresenter(
         } ?: context.getString(R.string.unknown)
     }
 
+    fun changeReadDurationPeriod(toAdd: Int) {
+        startDate.add(Calendar.DAY_OF_YEAR, toAdd * daysRange.toInt())
+        endDate.add(Calendar.DAY_OF_YEAR, toAdd * daysRange.toInt())
+    }
+
+    private fun getDaysRange(): Long {
+        return TimeUnit.MILLISECONDS.toDays(endDate.timeInMillis - startDate.timeInMillis) + 1
+    }
+
     /**
-     * Update the start date and end date according to time selected and fetch the history of the period
+     * Update the start date and end date according to time selected
      */
-    fun updateReadDurationPeriod(millis: Long, days: Int) {
-        startDate = Calendar.getInstance().apply {
-            timeInMillis = millis
-            set(Calendar.HOUR_OF_DAY, 0)
-            clear(Calendar.MINUTE)
-            clear(Calendar.SECOND)
-            clear(Calendar.MILLISECOND)
-        }
-        endDate = Calendar.getInstance().apply {
-            timeInMillis = startDate.timeInMillis - 1
-            add(Calendar.DAY_OF_YEAR, days)
-        }
-    }
-
-    fun updateMangaHistory() {
-        history = getMangaHistoryGroupedByDay()
-    }
-
     fun updateReadDurationPeriod(startMillis: Long, endMillis: Long) {
         startDate = Calendar.getInstance().apply {
             timeInMillis = startMillis
@@ -616,6 +625,11 @@ class StatsDetailsPresenter(
             add(Calendar.DAY_OF_YEAR, 1)
             timeInMillis -= 1
         }
+        daysRange = getDaysRange()
+    }
+
+    fun updateMangaHistory() {
+        history = getMangaHistoryGroupedByDay()
     }
 
     fun convertCalendarToLongString(calendar: Calendar): String {
@@ -657,7 +671,7 @@ class StatsDetailsPresenter(
     enum class StatsSort(val resourceId: Int) {
         COUNT_DESC(R.string.most_entries),
         PROGRESS_DESC(R.string.chapters_read),
-        MEAN_SCORE_DESC(R.string.mean_score),
+        MEAN_SCORE_DESC(R.string.mean_tracking_score),
     }
 
     class StatsData(
@@ -673,5 +687,6 @@ class StatsDetailsPresenter(
         var icon: Drawable? = null,
         var subLabel: String? = null,
         var readDuration: Long = 0,
+        var id: Long? = null,
     )
 }

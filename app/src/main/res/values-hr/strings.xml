@@ -12,9 +12,9 @@
     <string name="lock_with_biometrics">Zaključaj pomoću biometrije</string>
     <string name="lock_when_idle">Zaključaj prilikom mirovanja</string>
     <plurals name="chapters_plural">
-        <item quantity="one">%1$d poglavlje</item>
-        <item quantity="few">%1$d poglavlja</item>
-        <item quantity="other">%1$d poglavlja</item>
+        <item quantity="one">%1$s poglavlje</item>
+        <item quantity="few">%1$s poglavlja</item>
+        <item quantity="other">%1$s poglavlja</item>
     </plurals>
     <string name="unread">Nepročitano</string>
     <string name="chapter_">Poglavlje %1$s</string>
@@ -1034,7 +1034,6 @@
     <string name="statistics">Statistika</string>
     <string name="titles_in_library">Naslovi u biblioteci</string>
     <string name="chapters_read">Pročitana poglavlja</string>
-    <string name="mean_score">Prosjek</string>
     <string name="tracked_titles">Praćeni naslovi</string>
     <string name="tags">Oznake</string>
     <string name="trackers">Tragači</string>
@@ -1073,4 +1072,7 @@
         <item quantity="few">%d jezika</item>
         <item quantity="other">%d jezika</item>
     </plurals>
+    <string name="read_duration_info">Provedeno vrijeme u čitaču, na temelju povijesti poglavlja</string>
+    <string name="skipped_reason_not_always_update">Preskočeno jer serija ne zahtijeva ažuriranje</string>
+    <string name="error_user_agent_string_invalid">Nevažeći niz korisničkog agenta</string>
 </resources>

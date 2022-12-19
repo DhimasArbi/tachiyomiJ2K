@@ -618,8 +618,8 @@
     <string name="could_not_install_update">আপডেট ইনস্টল করা যায়নি</string>
     <string name="when_grouping_by_sources_tags">উত্স, স্থিতি, ইত্যাদি দ্বারা লাইব্রেরি গ্রুপ করার সময়।</string>
     <plurals name="chapters_plural">
-        <item quantity="one">%1$dটি অধ্যায়</item>
-        <item quantity="other">%1$d গুলি অধ্যায়</item>
+        <item quantity="one">%1$sটি অধ্যায়</item>
+        <item quantity="other">%1$s গুলি অধ্যায়</item>
     </plurals>
     <string name="getting_started_guide">শুরু হওয়ার গাইড</string>
     <string name="scanlators">স্ক্যানলেটর</string>
@@ -962,7 +962,6 @@
     <string name="statistics_details">বিশদ পরিসংখ্যান</string>
     <string name="titles_in_library">লাইব্রেরীতে শিরোনামসমুহ</string>
     <string name="chapters_read">পঠিত অধ্যায়সমুহ</string>
-    <string name="mean_score">সর্বনিম্ন স্কোর</string>
     <string name="tracked_titles">ট্র্যাক করা শিরোনামসমূহ</string>
     <string name="titles_in_global_update">সর্বজনীন হালনাগাদে শিরোনামসমুহ</string>
     <string name="trackers">ট্র্যাকারগুলো</string>

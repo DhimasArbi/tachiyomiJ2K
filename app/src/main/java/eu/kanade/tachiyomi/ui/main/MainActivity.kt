@@ -26,6 +26,7 @@ import android.view.WindowManager
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.addCallback
 import androidx.annotation.IdRes
+import androidx.appcompat.view.ActionMode
 import androidx.appcompat.view.menu.ActionMenuItemView
 import androidx.appcompat.view.menu.MenuItemImpl
 import androidx.appcompat.widget.ActionMenuView
@@ -43,7 +44,12 @@ import androidx.core.view.forEach
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePadding
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.window.layout.DisplayFeature
+import androidx.window.layout.FoldingFeature
+import androidx.window.layout.WindowInfoTracker
 import com.bluelinelabs.conductor.Conductor
 import com.bluelinelabs.conductor.Controller
 import com.bluelinelabs.conductor.ControllerChangeHandler
@@ -152,6 +158,8 @@ open class MainActivity : BaseActivity<MainActivityBinding>(), DownloadServiceLi
     private var overflowDialog: Dialog? = null
     var currentToolbar: Toolbar? = null
     var ogWidth: Int = Int.MAX_VALUE
+    var hingeGapSize = 0
+        private set
 
     private val actionButtonSize: Pair<Int, Int> by lazy {
         val attrs = intArrayOf(android.R.attr.minWidth, android.R.attr.minHeight)
@@ -182,6 +190,7 @@ open class MainActivity : BaseActivity<MainActivityBinding>(), DownloadServiceLi
     val toolbarHeight: Int
         get() = max(binding.toolbar.height, binding.cardFrame.height, binding.appBar.attrToolbarHeight)
 
+    private var actionMode: ActionMode? = null
     var backPressedCallback: OnBackPressedCallback? = null
     private val backCallback = {
         pressingBack()
@@ -522,11 +531,30 @@ open class MainActivity : BaseActivity<MainActivityBinding>(), DownloadServiceLi
                 }
             }
         setFloatingToolbar(canShowFloatingToolbar(router.backstack.lastOrNull()?.controller), changeBG = false)
+
+        lifecycleScope.launchUI {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                WindowInfoTracker.getOrCreate(this@MainActivity).windowLayoutInfo(this@MainActivity)
+                    .collect { newLayoutInfo ->
+                        hingeGapSize = 0
+                        for (displayFeature: DisplayFeature in newLayoutInfo.displayFeatures) {
+                            if (displayFeature is FoldingFeature && displayFeature.occlusionType == FoldingFeature.OcclusionType.FULL &&
+                                displayFeature.isSeparating && displayFeature.orientation == FoldingFeature.Orientation.VERTICAL
+                            ) {
+                                hingeGapSize = displayFeature.bounds.width()
+                            }
+                        }
+                        if (hingeGapSize > 0) {
+                            (router.backstack.lastOrNull()?.controller as? HingeSupportedController)?.updateForHinge()
+                        }
+                    }
+            }
+        }
     }
 
     fun reEnableBackPressedCallBack() {
         val returnToStart = preferences.backReturnsToStart().get() && this !is SearchActivity
-        backPressedCallback?.isEnabled =
+        backPressedCallback?.isEnabled = actionMode != null ||
             (binding.searchToolbar.hasExpandedActionView() && binding.cardFrame.isVisible) ||
             router.canStillGoBack() || (returnToStart && startingTab() != nav.selectedItemId)
     }
@@ -666,12 +694,16 @@ open class MainActivity : BaseActivity<MainActivityBinding>(), DownloadServiceLi
         }
     }
 
-    override fun startSupportActionMode(callback: androidx.appcompat.view.ActionMode.Callback): androidx.appcompat.view.ActionMode? {
+    override fun startSupportActionMode(callback: ActionMode.Callback): ActionMode? {
         window?.statusBarColor = getResourceColor(R.attr.colorPrimaryVariant)
-        return super.startSupportActionMode(callback)
+        actionMode = super.startSupportActionMode(callback)
+        reEnableBackPressedCallBack()
+        return actionMode
     }
 
-    override fun onSupportActionModeFinished(mode: androidx.appcompat.view.ActionMode) {
+    override fun onSupportActionModeFinished(mode: ActionMode) {
+        actionMode = null
+        reEnableBackPressedCallBack()
         launchUI {
             val scale = Settings.Global.getFloat(
                 contentResolver,
@@ -890,7 +922,7 @@ open class MainActivity : BaseActivity<MainActivityBinding>(), DownloadServiceLi
             is MangaDetailsController -> {
                 val source = controller.presenter.source as? HttpSource ?: return
                 val url = try {
-                    source.mangaDetailsRequest(controller.presenter.manga).url.toString()
+                    source.getMangaUrl(controller.presenter.manga)
                 } catch (e: Exception) {
                     return
                 }
@@ -916,6 +948,10 @@ open class MainActivity : BaseActivity<MainActivityBinding>(), DownloadServiceLi
     }
 
     private fun pressingBack() {
+        if (actionMode != null) {
+            actionMode?.finish()
+            return
+        }
         if (binding.searchToolbar.hasExpandedActionView() && binding.cardFrame.isVisible) {
             binding.searchToolbar.collapseActionView()
             return
@@ -1387,6 +1423,10 @@ interface RootSearchInterface {
 }
 
 interface TabbedInterface
+
+interface HingeSupportedController {
+    fun updateForHinge()
+}
 
 interface FloatingSearchInterface {
     fun searchTitle(title: String?): String? {

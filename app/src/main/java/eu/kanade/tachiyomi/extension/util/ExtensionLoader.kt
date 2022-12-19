@@ -39,7 +39,7 @@ internal object ExtensionLoader {
     private const val METADATA_HAS_README = "tachiyomi.extension.hasReadme"
     private const val METADATA_HAS_CHANGELOG = "tachiyomi.extension.hasChangelog"
     const val LIB_VERSION_MIN = 1.2
-    const val LIB_VERSION_MAX = 1.3
+    const val LIB_VERSION_MAX = 1.4
 
     private const val PACKAGE_FLAGS = PackageManager.GET_CONFIGURATIONS or PackageManager.GET_SIGNATURES
 
@@ -144,7 +144,7 @@ internal object ExtensionLoader {
         if (signatureHash == null) {
             return LoadResult.Error("Package $pkgName isn't signed")
         } else if (signatureHash !in trustedSignatures) {
-            val extension = Extension.Untrusted(extName, pkgName, versionName, versionCode, signatureHash)
+            val extension = Extension.Untrusted(extName, pkgName, versionName, versionCode, libVersion, signatureHash)
             Timber.w("Extension $pkgName isn't trusted")
             return LoadResult.Untrusted(extension)
         }
@@ -192,14 +192,15 @@ internal object ExtensionLoader {
         }
 
         val extension = Extension.Installed(
-            extName,
-            pkgName,
-            versionName,
-            versionCode,
-            lang,
-            isNsfw,
-            hasReadme,
-            hasChangelog,
+            name = extName,
+            pkgName = pkgName,
+            versionName = versionName,
+            versionCode = versionCode,
+            libVersion = libVersion,
+            lang = lang,
+            isNsfw = isNsfw,
+            hasReadme = hasReadme,
+            hasChangelog = hasChangelog,
             sources = sources,
             pkgFactory = appInfo.metaData.getString(METADATA_SOURCE_FACTORY),
             isUnofficial = signatureHash != officialSignature,

@@ -75,8 +75,8 @@
         <item quantity="other">Remove %1$d downloaded chapters?</item>
     </plurals>
     <plurals name="chapters_plural">
-        <item quantity="one">%1$d chapter</item>
-        <item quantity="other">%1$d chapters</item>
+        <item quantity="one">%1$s chapter</item>
+        <item quantity="other">%1$s chapters</item>
     </plurals>
     <plurals name="pages_left">
         <item quantity="one">%1$d page left</item>
@@ -211,6 +211,7 @@
     <string name="skipped_reason_completed">Skipped because series is complete</string>
     <string name="skipped_reason_not_caught_up">Skipped because there are unread chapters</string>
     <string name="skipped_reason_not_started">Skipped because no chapters are read</string>
+    <string name="skipped_reason_not_always_update">Skipped because series does not require updates</string>
     <string name="channel_errors">Errors</string>
     <string name="channel_skipped">Skipped</string>
 
@@ -807,6 +808,7 @@
     <string name="network">Network</string>
     <string name="doh">DNS over HTTPS</string>
     <string name="user_agent_string">Default user agent string</string>
+    <string name="error_user_agent_string_invalid">Invalid user agent string</string>
     <string name="disabled">Disabled</string>
     <string name="cloudflare" translatable="false">Cloudflare</string>
     <string name="google" translatable="false">Google</string>
@@ -980,8 +982,7 @@
     <string name="statistics_details">Statistics details</string>
     <string name="titles_in_library">Titles in library</string>
     <string name="chapters_read">Read chapters</string>
-    <string name="mean_score">Mean score</string>
-    <string name="mean_score_info">Average trackers score for each manga</string>
+    <string name="mean_tracking_score">Mean tracking score</string>
     <string name="tracked_titles">Tracked titles</string>
     <string name="downloaded_chapters">Downloaded chapters</string>
     <string name="tags">Tags</string>

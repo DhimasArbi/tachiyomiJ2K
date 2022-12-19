@@ -19,6 +19,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.annotation.ColorInt
 import androidx.annotation.FloatRange
@@ -26,6 +27,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.view.ActionMode
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.SearchView
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsCompat.Type.systemBars
@@ -66,8 +68,10 @@ import eu.kanade.tachiyomi.ui.base.SmallToolbarInterface
 import eu.kanade.tachiyomi.ui.base.controller.BaseCoroutineController
 import eu.kanade.tachiyomi.ui.base.controller.DialogController
 import eu.kanade.tachiyomi.ui.base.holder.BaseFlexibleViewHolder
+import eu.kanade.tachiyomi.ui.library.FilteredLibraryController
 import eu.kanade.tachiyomi.ui.library.LibraryController
 import eu.kanade.tachiyomi.ui.main.FloatingSearchInterface
+import eu.kanade.tachiyomi.ui.main.HingeSupportedController
 import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.main.SearchActivity
 import eu.kanade.tachiyomi.ui.manga.chapter.ChapterHolder
@@ -104,6 +108,7 @@ import eu.kanade.tachiyomi.util.system.rootWindowInsetsCompat
 import eu.kanade.tachiyomi.util.system.setCustomTitleAndMessage
 import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.util.view.activityBinding
+import eu.kanade.tachiyomi.util.view.findChild
 import eu.kanade.tachiyomi.util.view.getText
 import eu.kanade.tachiyomi.util.view.isControllerVisible
 import eu.kanade.tachiyomi.util.view.previousController
@@ -134,6 +139,7 @@ class MangaDetailsController :
     ActionMode.Callback,
     MangaDetailsAdapter.MangaDetailsInterface,
     SmallToolbarInterface,
+    HingeSupportedController,
     FlexibleAdapter.OnItemMoveListener {
 
     constructor(
@@ -366,10 +372,35 @@ class MangaDetailsController :
         binding.tabletRecycler.isVisible = isTablet
         binding.tabletDivider.isVisible = isTablet
         if (isTablet) {
+            binding.tabletRecycler.itemAnimator = null
             binding.recycler.updateLayoutParams<ViewGroup.LayoutParams> { width = 0 }
             tabletAdapter = MangaDetailsAdapter(this)
             binding.tabletRecycler.adapter = tabletAdapter
             binding.tabletRecycler.layoutManager = LinearLayoutManager(view.context)
+            updateForHinge()
+        }
+    }
+
+    override fun updateForHinge() {
+        if (isTablet) {
+            val hingeGapSize = (activity as? MainActivity)?.hingeGapSize?.takeIf { it > 0 }
+            if (hingeGapSize != null) {
+                binding.tabletDivider.updateLayoutParams<ViewGroup.LayoutParams> {
+                    width = hingeGapSize
+                }
+                binding.tabletRecycler.updateLayoutParams<ConstraintLayout.LayoutParams> {
+                    matchConstraintPercentWidth = 1f
+                    width = 0
+                    matchConstraintDefaultWidth =
+                        ConstraintLayout.LayoutParams.MATCH_CONSTRAINT_SPREAD
+                }
+                val swipeCircle = binding.swipeRefresh.findChild<ImageView>()
+                swipeCircle?.translationX =
+                    (activity!!.window.decorView.width / 2 + hingeGapSize) /
+                    2f
+            } else {
+                binding.tabletRecycler.updateLayoutParams<ConstraintLayout.LayoutParams> { matchConstraintPercentWidth = 0.4f }
+            }
         }
     }
 
@@ -382,6 +413,7 @@ class MangaDetailsController :
     }
 
     /** Set adapter, insets, and scroll listener for recycler view */
+    @SuppressLint("ClickableViewAccessibility")
     private fun setRecycler(view: View) {
         adapter = MangaDetailsAdapter(this)
 
@@ -439,6 +471,12 @@ class MangaDetailsController :
         binding.touchView.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_DOWN) {
                 finishFloatingActionMode()
+                val hingeGapSize = (activity as? MainActivity)?.hingeGapSize?.takeIf { it > 0 }
+                if (hingeGapSize != null) {
+                    val swipeCircle = binding.swipeRefresh.findChild<ImageView>()
+                    swipeCircle?.translationX = (binding.root.width / 2 + hingeGapSize) / 2 *
+                        (if (event.x > binding.root.width / 2) 1 else -1).toFloat()
+                }
             }
             false
         }
@@ -831,7 +869,7 @@ class MangaDetailsController :
         val adapter = adapter ?: return
         val item = (adapter.getItem(position) as? ChapterItem) ?: return
         val descending = presenter.sortDescending()
-        val items = listOf(
+        var items = mutableListOf(
             MaterialMenuSheet.MenuSheetItem(
                 0,
                 if (descending) R.drawable.ic_eye_down_24dp else R.drawable.ic_eye_up_24dp,
@@ -853,33 +891,27 @@ class MangaDetailsController :
                 R.string.mark_range_as_unread,
             ),
         )
+        if (presenter.getChapterUrl(item.chapter) != null) {
+            items.add(
+                0,
+                MaterialMenuSheet.MenuSheetItem(
+                    4,
+                    R.drawable.ic_open_in_webview_24dp,
+                    R.string.open_in_webview,
+                ),
+            )
+        }
         val menuSheet = MaterialMenuSheet(activity!!, items, item.name) { _, itemPos ->
             when (itemPos) {
                 0 -> markPreviousAs(item, true)
                 1 -> markPreviousAs(item, false)
                 2 -> startReadRange(position, RangeMode.Read)
                 3 -> startReadRange(position, RangeMode.Unread)
+                4 -> openChapterInWebView(item)
             }
             true
         }
         menuSheet.show()
-//        val popup = PopupMenu(itemView.context, itemView)
-//        chapterPopupMenu = position to popup
-//
-//        // Inflate our menu resource into the PopupMenu's Menu
-//        popup.menuInflater.inflate(R.menu.chapter_single, popup.menu)
-//
-//        popup.setOnMenuItemClickListener { menuItem ->
-//            when (menuItem.itemId) {
-//                R.id.action_mark_previous_as_read -> markPreviousAs(item, true)
-//                R.id.action_mark_previous_as_unread -> markPreviousAs(item, false)
-//            }
-//            chapterPopupMenu = null
-//            true
-//        }
-//
-//        // Finally show the PopupMenu
-//        popup.show()
     }
 
     override fun onActionStateChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
@@ -1161,7 +1193,7 @@ class MangaDetailsController :
         val source = presenter.source as? HttpSource ?: return
         val stream = cover?.getUriCompat(context)
         try {
-            val url = source.mangaDetailsRequest(presenter.manga).url.toString()
+            val url = source.getMangaUrl(presenter.manga)
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/*"
                 putExtra(Intent.EXTRA_TEXT, url)
@@ -1185,6 +1217,22 @@ class MangaDetailsController :
         } catch (e: Exception) {
             return
         }
+
+        val activity = activity ?: return
+        val intent = WebViewActivity.newIntent(
+            activity.applicationContext,
+            source.id,
+            url,
+            presenter.manga
+                .title,
+        )
+        startActivity(intent)
+    }
+
+    fun openChapterInWebView(item: ChapterItem) {
+        if (isNotOnline()) return
+        val source = presenter.source as? HttpSource ?: return
+        val url = presenter.getChapterUrl(item.chapter) ?: return
 
         val activity = activity ?: return
         val intent = WebViewActivity.newIntent(
@@ -1402,24 +1450,7 @@ class MangaDetailsController :
     }
 
     override fun localSearch(text: String) {
-        if (router.backstackSize < 2) {
-            return
-        }
-
-        when (val previousController = router.backstack[router.backstackSize - 2].controller) {
-            is LibraryController -> {
-                router.handleBack()
-                previousController.search(text)
-            }
-            is RecentsController -> {
-                // Manually navigate to LibraryController
-                router.handleBack()
-                (activity as? MainActivity)?.goToTab(R.id.nav_library)
-                val controller =
-                    router.getControllerWithTag(R.id.nav_library.toString()) as LibraryController
-                controller.search(text)
-            }
-        }
+        router.pushController(FilteredLibraryController(text, queryText = text).withFadeTransaction())
     }
 
     fun sourceSearch(text: String) {
@@ -1800,18 +1831,20 @@ class MangaDetailsController :
                 menu,
             )
             menu?.findItem(R.id.action_copy)?.isVisible = showCopy
-            val sourceMenuItem = menu?.findItem(R.id.action_source_search)
+            var sourceMenuItem = menu?.findItem(R.id.action_source_search)
             sourceMenuItem?.isVisible = searchSource && presenter.source is CatalogueSource
             val context = view?.context ?: return false
             val localItem = menu?.findItem(R.id.action_local_search) ?: return true
-            localItem.isVisible = when (previousController) {
-                is LibraryController, is RecentsController -> true
-                else -> false
-            }
+            localItem.isVisible = previousController !is FilteredLibraryController
             val library = context.getString(R.string.library).lowercase(Locale.getDefault())
             localItem.title = context.getString(R.string.search_, library)
             sourceMenuItem?.title = context.getString(R.string.search_, presenter.source.name)
             if (searchSource) {
+                if (previousController is BrowseSourceController) {
+                    menu.removeItem(R.id.action_source_search)
+                    sourceMenuItem = menu.add(0, R.id.action_source_search, 1, sourceMenuItem?.title)
+                    sourceMenuItem?.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+                }
                 sourceMenuItem?.icon = presenter.source.icon()
             }
             return true

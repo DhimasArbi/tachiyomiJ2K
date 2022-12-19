@@ -527,8 +527,8 @@
         <item quantity="other">%1$d sider igjen</item>
     </plurals>
     <plurals name="chapters_plural">
-        <item quantity="one">%1$d kapittel</item>
-        <item quantity="other">%1$d kapitler</item>
+        <item quantity="one">%1$s kapittel</item>
+        <item quantity="other">%1$s kapitler</item>
     </plurals>
     <string name="pad_cutout_areas">Legg til luft rundt utklippsområder</string>
     <string name="confirm_category_deletion_message">Manga i denne kategorien vil bli flyttet inn i den forvalgte kategorien.</string>
@@ -983,4 +983,17 @@
     <string name="complete_list">Komplett liste</string>
     <string name="user_agent_string">Standard streng for brukeragent</string>
     <string name="lavender">Lavendel</string>
+    <string name="trackers">Trackere</string>
+    <string name="read_duration">Tid brukt</string>
+    <string name="statistics">Statistikk</string>
+    <string name="skipped_reason_not_always_update">Hoppet over fordi seriene ikke krever oppdateringer</string>
+    <string name="error_user_agent_string_invalid">Ugyldig streng for brukeragent</string>
+    <string name="show_">Vis %1$s</string>
+    <string name="must_view_details_before_migration">Denne oppføringens detaljside må vises før du kan migrere</string>
+    <string name="new_beta_version_available">Ny beta-versjon tilgjengelig!</string>
+    <string name="check_for_beta_releases">Se etter beta-utgivelser</string>
+    <string name="violet">Lilla</string>
+    <string name="expanded_toolbar">Utvidet verktøylinje</string>
+    <string name="most_entries">Mest oppføringer</string>
+    <string name="select_uninstalled_sources">Velg avinstallerte kilder</string>
 </resources>

@@ -160,8 +160,16 @@ class LibraryHeaderHolder(val view: View, val adapter: LibraryCategoryAdapter) :
         binding.rearView.updatePadding(top = binding.categoryTitle.marginTop - 6)
         val category = item.category
 
-        binding.categoryTitle.text =
-            if (category.isAlone && !category.isDynamic) { "" } else { category.name } +
+        val isFilteredList = (adapter.libraryListener as? FilteredLibraryController)?.let {
+            it.filterCategories.size == 1 && it.getTitle() == category.name
+        } ?: false
+        val categoryName = if ((category.isAlone || isFilteredList) && !category.isDynamic) {
+            ""
+        } else {
+            category.name
+        }
+
+        binding.categoryTitle.text = categoryName +
             if (adapter.showNumber) {
                 " (${adapter.itemsPerCategory[item.catId]})"
             } else { "" }
@@ -196,7 +204,7 @@ class LibraryHeaderHolder(val view: View, val adapter: LibraryCategoryAdapter) :
                 binding.updateButton.isVisible = false
                 setSelection()
             }
-            (category.id ?: -1) < 0 -> {
+            (category.id ?: -1) < 0 || adapter.libraryListener is FilteredLibraryController -> {
                 binding.collapseArrow.isVisible = false
                 binding.checkbox.isVisible = false
                 setRefreshing(false)
