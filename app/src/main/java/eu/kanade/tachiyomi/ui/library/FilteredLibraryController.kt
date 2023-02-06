@@ -11,6 +11,8 @@ import com.bluelinelabs.conductor.ControllerChangeType
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.ui.library.filter.FilterBottomSheet
 import eu.kanade.tachiyomi.ui.more.stats.details.StatsDetailsController
+import eu.kanade.tachiyomi.util.system.contextCompatDrawable
+import eu.kanade.tachiyomi.util.system.getResourceColor
 import eu.kanade.tachiyomi.util.view.hide
 import eu.kanade.tachiyomi.util.view.previousController
 
@@ -26,6 +28,8 @@ class FilteredLibraryController(bundle: Bundle? = null) : LibraryController(bund
     var filterSources = emptyArray<Long>()
         private set
     var filterLanguages = emptyArray<String>()
+        private set
+    var filterTags = emptyArray<String>()
         private set
     var filterTrackingScore: Int = 0
         private set
@@ -50,6 +54,7 @@ class FilteredLibraryController(bundle: Bundle? = null) : LibraryController(bund
         filterMangaType: Array<Int> = emptyArray(),
         filterLanguages: Array<String> = emptyArray(),
         filterCategories: Array<Int> = emptyArray(),
+        filterTags: Array<String> = emptyArray(),
         filterTracked: Int = 0,
         filterTrackerName: String? = null,
         filterTrackingScore: Int = 0,
@@ -63,6 +68,7 @@ class FilteredLibraryController(bundle: Bundle? = null) : LibraryController(bund
         this.filterTracked = filterTracked
         this.filterMangaType = filterMangaType
         this.filterCategories = filterCategories
+        this.filterTags = filterTags
         if (filterTracked != 0 && filterTrackerName != null) {
             FilterBottomSheet.FILTER_TRACKER = filterTrackerName
         }
@@ -99,7 +105,11 @@ class FilteredLibraryController(bundle: Bundle? = null) : LibraryController(bund
     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
         inflater.inflate(R.menu.filtered_library, menu)
         val groupItem = menu.findItem(R.id.action_group_by)
-        groupItem?.setIcon(LibraryGroup.groupTypeDrawableRes(presenter.groupType))
+        val context = binding.root.context
+        val iconRes = LibraryGroup.groupTypeDrawableRes(presenter.groupType)
+        val icon = context.contextCompatDrawable(iconRes)
+            ?.apply { setTint(context.getResourceColor(R.attr.actionBarTintColor)) }
+        groupItem?.icon = icon
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
