@@ -3,17 +3,18 @@ package eu.kanade.tachiyomi.data.download
 import android.content.Context
 import com.hippo.unifile.UniFile
 import com.jakewharton.rxrelay.BehaviorRelay
+import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.database.models.Chapter
 import eu.kanade.tachiyomi.data.database.models.Manga
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.download.model.DownloadQueue
+import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceManager
 import eu.kanade.tachiyomi.source.model.Page
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
-import rx.Observable
 import timber.log.Timber
 import uy.kohesive.injekt.injectLazy
 
@@ -30,6 +31,8 @@ class DownloadManager(val context: Context) {
      * The sources manager.
      */
     private val sourceManager by injectLazy<SourceManager>()
+
+    private val preferences by injectLazy<PreferencesHelper>()
 
     /**
      * Downloads provider, used to retrieve the folders where the chapters are or should be stored.
@@ -177,32 +180,21 @@ class DownloadManager(val context: Context) {
      * @param source the source of the chapter.
      * @param manga the manga of the chapter.
      * @param chapter the downloaded chapter.
-     * @return an observable containing the list of pages from the chapter.
+     * @return the list of pages from the chapter.
      */
-    fun buildPageList(source: Source, manga: Manga, chapter: Chapter): Observable<List<Page>> {
-        return buildPageList(provider.findChapterDir(chapter, manga, source))
-    }
+    fun buildPageList(source: Source, manga: Manga, chapter: Chapter): List<Page> {
+        val chapterDir = provider.findChapterDir(chapter, manga, source)
+        val files = chapterDir?.listFiles().orEmpty()
+            .filter { "image" in it.type.orEmpty() }
 
-    /**
-     * Builds the page list of a downloaded chapter.
-     *
-     * @param chapterDir the file where the chapter is downloaded.
-     * @return an observable containing the list of pages from the chapter.
-     */
-    private fun buildPageList(chapterDir: UniFile?): Observable<List<Page>> {
-        return Observable.fromCallable {
-            val files = chapterDir?.listFiles().orEmpty()
-                .filter { "image" in it.type.orEmpty() }
-
-            if (files.isEmpty()) {
-                throw Exception("Page list is empty")
-            }
-
-            files.sortedBy { it.name }
-                .mapIndexed { i, file ->
-                    Page(i, uri = file.uri).apply { status = Page.READY }
-                }
+        if (files.isEmpty()) {
+            throw Exception(context.getString(R.string.no_pages_found))
         }
+
+        return files.sortedBy { it.name }
+            .mapIndexed { i, file ->
+                Page(i, uri = file.uri).apply { status = Page.State.READY }
+            }
     }
 
     /**
@@ -260,16 +252,17 @@ class DownloadManager(val context: Context) {
      * @param manga the manga of the chapters.
      * @param source the source of the chapters.
      */
-    fun deleteChapters(chapters: List<Chapter>, manga: Manga, source: Source) {
+    fun deleteChapters(chapters: List<Chapter>, manga: Manga, source: Source, force: Boolean = false) {
+        val filteredChapters = if (force) chapters else getChaptersToDelete(chapters, manga)
         GlobalScope.launch(Dispatchers.IO) {
             val wasPaused = isPaused()
-            if (chapters.isEmpty()) {
+            if (filteredChapters.isEmpty()) {
                 DownloadService.stop(context)
                 downloader.queue.clear()
                 return@launch
             }
             downloader.pause()
-            downloader.queue.remove(chapters)
+            downloader.queue.remove(filteredChapters)
             if (!wasPaused && downloader.queue.isNotEmpty()) {
                 downloader.start()
                 DownloadService.callListeners(true)
@@ -279,15 +272,15 @@ class DownloadManager(val context: Context) {
                 DownloadService.callListeners(false)
                 downloader.stop()
             }
-            queue.remove(chapters)
+            queue.remove(filteredChapters)
             val chapterDirs =
-                provider.findChapterDirs(chapters, manga, source) + provider.findTempChapterDirs(
-                    chapters,
+                provider.findChapterDirs(filteredChapters, manga, source) + provider.findTempChapterDirs(
+                    filteredChapters,
                     manga,
                     source,
                 )
             chapterDirs.forEach { it.delete() }
-            cache.removeChapters(chapters, manga)
+            cache.removeChapters(filteredChapters, manga)
             if (cache.getDownloadCount(manga, true) == 0) { // Delete manga directory if empty
                 chapterDirs.firstOrNull()?.parentFile?.delete()
             }
@@ -367,7 +360,7 @@ class DownloadManager(val context: Context) {
      * @param manga the manga of the chapters.
      */
     fun enqueueDeleteChapters(chapters: List<Chapter>, manga: Manga) {
-        pendingDeleter.addChapters(chapters, manga)
+        pendingDeleter.addChapters(getChaptersToDelete(chapters, manga), manga)
     }
 
     /**
@@ -409,4 +402,13 @@ class DownloadManager(val context: Context) {
 
     fun addListener(listener: DownloadQueue.DownloadListener) = queue.addListener(listener)
     fun removeListener(listener: DownloadQueue.DownloadListener) = queue.removeListener(listener)
+
+    private fun getChaptersToDelete(chapters: List<Chapter>, manga: Manga): List<Chapter> {
+        // Retrieve the categories that are set to exclude from being deleted on read
+        return if (!preferences.removeBookmarkedChapters().get()) {
+            chapters.filterNot { it.bookmark }
+        } else {
+            chapters
+        }
+    }
 }

@@ -6,7 +6,6 @@ import com.chuckerteam.chucker.api.ChuckerInterceptor
 import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.network.interceptor.CloudflareInterceptor
-import eu.kanade.tachiyomi.network.interceptor.Http103Interceptor
 import eu.kanade.tachiyomi.network.interceptor.UserAgentInterceptor
 import okhttp3.Cache
 import okhttp3.OkHttpClient
@@ -25,7 +24,6 @@ class NetworkHelper(val context: Context) {
     val cookieManager = AndroidCookieJar()
 
     private val userAgentInterceptor by lazy { UserAgentInterceptor() }
-    private val http103Interceptor by lazy { Http103Interceptor(context) }
     private val cloudflareInterceptor by lazy { CloudflareInterceptor(context) }
 
     private val baseClientBuilder: OkHttpClient.Builder
@@ -36,7 +34,6 @@ class NetworkHelper(val context: Context) {
                 .readTimeout(30, TimeUnit.SECONDS)
                 .callTimeout(2, TimeUnit.MINUTES)
                 .addInterceptor(userAgentInterceptor)
-                .addNetworkInterceptor(http103Interceptor)
                 .apply {
                     if (BuildConfig.DEBUG) {
                         addInterceptor(
@@ -74,6 +71,6 @@ class NetworkHelper(val context: Context) {
     }
 
     companion object {
-        const val DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:106.0) Gecko/20100101 Firefox/106.0"
+        const val DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:106.0) Gecko/20100101 Firefox/108.0"
     }
 }

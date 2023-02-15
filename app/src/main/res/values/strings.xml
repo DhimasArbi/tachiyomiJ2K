@@ -294,6 +294,7 @@
     <string name="global_search">Global search…</string>
     <string name="label_global_search">Global search</string>
     <string name="latest">Latest</string>
+    <string name="popular">Popular</string>
     <string name="browse">Browse</string>
     <string name="in_library">In Library</string>
     <string name="search_extensions">Search extensions…</string>
@@ -425,6 +426,7 @@
     <string name="keep_screen_on">Keep screen on</string>
     <string name="skip_read_chapters">Skip chapters marked read</string>
     <string name="skip_filtered_chapters">Skip filtered chapters</string>
+    <string name="skip_dupe_chapters">Skip duplicate chapters</string>
     <string name="navigation">Navigation</string>
     <string name="volume_keys">Volume keys</string>
     <string name="invert_volume_keys">Invert volume keys</string>
@@ -620,6 +622,8 @@
     <string name="shikimori" translatable="false">Shikimori</string>
     <string name="manga_updates" translatable="false">MangaUpdates</string>
     <string name="komga" translatable="false">Komga</string>
+    <string name="kavita" translatable="false">Kavita</string>
+    <string name="suwayomi" translatable="false">Suwayomi</string>
     <string name="update_tracking_scoring_type">Update %1$s\'s scoring type</string>
     <string name="scoring_type_updated">Scoring type updated</string>
     <string name="could_not_update_scoring_">Could not update scoring type: %1$s</string>
@@ -872,6 +876,7 @@
     <string name="notify_extension_updated">Notify extension has been updated</string>
     <string name="some_extensions_may_not_update">Some extensions may not be auto-updated if they were installed outside this app</string>
     <string name="only_search_pinned_when">Only search pinned sources</string>
+    <string name="hide_in_library_items">Hide entries already in library</string>
     <string name="match_pinned_sources">Match pinned sources</string>
     <string name="match_enabled_sources">Match enabled sources</string>
     <string name="only_enable_pinned_for_migration">Only enable your pinned sources for
@@ -952,6 +957,7 @@
     <string name="download_location">Download location</string>
     <string name="only_download_over_wifi">Only download over Wi-Fi</string>
     <string name="remove_when_marked_as_read">Remove when marked as read</string>
+    <string name="allow_deleting_bookmarked_chapters">Allow deleting bookmarked chapters</string>
     <string name="remove_after_read">Remove after read</string>
     <string name="custom_location">Custom location</string>
     <string name="last_read_chapter">Last read chapter</string>
@@ -1038,6 +1044,10 @@
     <string name="please_update_webview">Please update the WebView app for better compatibility</string>
     <!-- Do not translate "WebView" -->
     <string name="webview_is_required">WebView is required for Tachiyomi</string>
+
+    <!-- App widget -->
+    <string name="appwidget_updates_description">See your recently updated library entries</string>
+    <string name="appwidget_unavailable_locked">Widget not available when app lock is enabled</string>
 
     <!-- Miscellaneous -->
     <string name="add">Add</string>

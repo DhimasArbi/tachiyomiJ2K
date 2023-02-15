@@ -7,22 +7,18 @@ import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.database.models.Manga
 import eu.kanade.tachiyomi.data.database.models.Track
 import eu.kanade.tachiyomi.data.track.EnhancedTrackService
-import eu.kanade.tachiyomi.data.track.NoLoginTrackService
 import eu.kanade.tachiyomi.data.track.TrackService
 import eu.kanade.tachiyomi.data.track.model.TrackSearch
 import eu.kanade.tachiyomi.data.track.updateNewTrackInfo
-import eu.kanade.tachiyomi.source.Source
 import okhttp3.Dns
 import okhttp3.OkHttpClient
 
-class Komga(private val context: Context, id: Int) : TrackService(id), EnhancedTrackService, NoLoginTrackService {
+class Komga(private val context: Context, id: Int) : TrackService(id), EnhancedTrackService {
 
     companion object {
         const val UNREAD = 1
         const val READING = 2
         const val COMPLETED = 3
-
-        const val ACCEPTED_SOURCE = "eu.kanade.tachiyomi.extension.all.komga.Komga"
     }
 
     override val client: OkHttpClient =
@@ -72,7 +68,7 @@ class Komga(private val context: Context, id: Int) : TrackService(id), EnhancedT
     override fun displayScore(track: Track): String = ""
     override suspend fun add(track: Track): Track {
         track.status = READING
-        updateNewTrackInfo(track, UNREAD)
+        updateNewTrackInfo(track)
         return api.updateProgress(track)
     }
 
@@ -107,19 +103,7 @@ class Komga(private val context: Context, id: Int) : TrackService(id), EnhancedT
         saveCredentials("user", "pass")
     }
 
-    override fun accept(source: Source): Boolean = source::class.qualifiedName == ACCEPTED_SOURCE
-
     override fun getAcceptedSources() = listOf("eu.kanade.tachiyomi.extension.all.komga.Komga")
-
-    override fun isTrackFrom(track: Track, manga: Manga, source: Source?): Boolean =
-        track.tracking_url == manga.url && source?.let { accept(it) } == true
-
-    override fun migrateTrack(track: Track, manga: Manga, newSource: Source): Track? =
-        if (accept(newSource)) {
-            track.also { track.tracking_url = manga.url }
-        } else {
-            null
-        }
 
     override suspend fun match(manga: Manga): TrackSearch? =
         try {
