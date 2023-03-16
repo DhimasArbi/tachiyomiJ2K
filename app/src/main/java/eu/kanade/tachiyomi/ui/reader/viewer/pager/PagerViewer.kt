@@ -81,6 +81,8 @@ abstract class PagerViewer(val activity: ReaderActivity) : BaseViewer {
             }
         }
 
+    var hasMoved = false
+
     /**
      * Variable used to hold the forward pos for reader activity shared transitions
      * Without this var landscapezoom wont work with activity transitions
@@ -99,6 +101,9 @@ abstract class PagerViewer(val activity: ReaderActivity) : BaseViewer {
 
         override fun onPageScrollStateChanged(state: Int) {
             isIdle = state == ViewPager.SCROLL_STATE_IDLE
+            if (!hasMoved) {
+                hasMoved = !isIdle
+            }
         }
     }
 
@@ -293,6 +298,13 @@ abstract class PagerViewer(val activity: ReaderActivity) : BaseViewer {
         // If we don't the size change could put us on a new chapter
         pager.removeOnPageChangeListener(pagerListener)
         setChaptersInternal(chapters)
+        if (!hasMoved) {
+            activity.isScrollingThroughPagesOrChapters = true
+            chapters.currChapter.pages?.let { pages ->
+                moveToPage(pages[chapters.currChapter.requestedPage], false)
+            }
+            activity.isScrollingThroughPagesOrChapters = false
+        }
         pager.addOnPageChangeListener(pagerListener)
         // Since we removed the listener while shifting, call page change to update the ui
         onPageChange(pager.currentItem)
@@ -486,5 +498,12 @@ abstract class PagerViewer(val activity: ReaderActivity) : BaseViewer {
             }
         }
         return false
+    }
+
+    fun hideMenuIfVisible(item: Any) {
+        val currentItem = adapter.joinedItems.getOrNull(pager.currentItem)
+        if (item == currentItem && isIdle) {
+            activity.hideMenu()
+        }
     }
 }

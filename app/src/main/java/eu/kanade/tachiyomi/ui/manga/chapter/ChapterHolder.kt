@@ -14,6 +14,7 @@ import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.databinding.ChaptersItemBinding
 import eu.kanade.tachiyomi.ui.manga.MangaDetailsAdapter
 import eu.kanade.tachiyomi.util.chapter.ChapterUtil
+import eu.kanade.tachiyomi.util.chapter.ChapterUtil.Companion.preferredChapterName
 import eu.kanade.tachiyomi.util.isLocal
 import eu.kanade.tachiyomi.util.system.dpToPx
 import eu.kanade.tachiyomi.util.system.getResourceColor
@@ -37,14 +38,11 @@ class ChapterHolder(
         val chapter = item.chapter
         val isLocked = item.isLocked
         itemView.transitionName = "details chapter ${chapter.id ?: 0L} transition"
-        binding.chapterTitle.text = if (manga.hideChapterTitle(adapter.preferences)) {
-            val number = adapter.decimalFormat.format(chapter.chapter_number.toDouble())
-            itemView.context.getString(R.string.chapter_, number)
-        } else {
-            chapter.name
-        }
+        binding.chapterTitle.text =
+            chapter.preferredChapterName(itemView.context, manga, adapter.preferences)
 
         binding.downloadButton.downloadButton.isVisible = !manga.isLocal() && !isLocked
+        localSource = manga.isLocal()
 
         ChapterUtil.setTextViewForChapter(binding.chapterTitle, item, hideStatus = isLocked)
 
@@ -162,7 +160,7 @@ class ChapterHolder(
                 binding.chapterTitle,
                 ColorStateList.valueOf(it),
             )
-            colorSecondary = it
+            accentColor = it
         }
         if (locked) {
             isVisible = false

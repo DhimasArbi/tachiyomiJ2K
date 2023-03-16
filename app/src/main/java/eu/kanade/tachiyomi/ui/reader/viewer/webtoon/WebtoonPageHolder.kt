@@ -1,36 +1,34 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.webtoon
 
 import android.annotation.SuppressLint
-import android.content.Intent
 import android.content.res.Resources
 import android.graphics.Color
 import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.FrameLayout
-import android.widget.LinearLayout
-import android.widget.TextView
-import androidx.appcompat.widget.AppCompatButton
-import androidx.core.net.toUri
 import androidx.core.view.isVisible
 import androidx.core.view.updatePaddingRelative
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
-import eu.kanade.tachiyomi.R
+import eu.kanade.tachiyomi.databinding.ReaderErrorBinding
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
+import eu.kanade.tachiyomi.ui.reader.viewer.ReaderErrorView
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressBar
 import eu.kanade.tachiyomi.util.system.ImageUtil
 import eu.kanade.tachiyomi.util.system.dpToPx
+import eu.kanade.tachiyomi.util.system.launchIO
+import eu.kanade.tachiyomi.util.system.withIOContext
+import eu.kanade.tachiyomi.util.system.withUIContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import rx.Observable
-import rx.Subscription
-import rx.android.schedulers.AndroidSchedulers
-import rx.schedulers.Schedulers
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.BufferedInputStream
 import java.io.InputStream
 
@@ -58,14 +56,9 @@ class WebtoonPageHolder(
     private lateinit var progressContainer: ViewGroup
 
     /**
-     * Retry button container used to allow retrying.
+     * Error layout to show when the image fails to load.
      */
-    private var retryContainer: ViewGroup? = null
-
-    /**
-     * Error layout to show when the image fails to decode.
-     */
-    private var decodeErrorLayout: ViewGroup? = null
+    private var errorLayout: ReaderErrorView? = null
 
     /**
      * Getter to retrieve the height of the recycler view.
@@ -86,20 +79,9 @@ class WebtoonPageHolder(
     private var loadJob: Job? = null
 
     /**
-     * Job for status changes of the page.
-     */
-    private var statusJob: Job? = null
-
-    /**
      * Job for progress changes of the page.
      */
     private var progressJob: Job? = null
-
-    /**
-     * Subscription used to read the header of the image. This is needed in order to instantiate
-     * the appropriate image view depending if the image is animated (GIF).
-     */
-    private var readImageHeaderSubscription: Subscription? = null
 
     init {
         refreshLayoutParams()
@@ -136,9 +118,8 @@ class WebtoonPageHolder(
     override fun recycle() {
         cancelLoadJob()
         cancelProgressJob()
-        unsubscribeReadImageHeader()
 
-        removeDecodeErrorLayout()
+        removeErrorLayout()
         frame.recycle()
         progressBar.setProgress(0)
     }
@@ -150,13 +131,14 @@ class WebtoonPageHolder(
      */
     private fun launchLoadJob() {
         cancelLoadJob()
+        loadJob = scope.launch { loadPageAndProcessStatus() }
+    }
 
+    private suspend fun loadPageAndProcessStatus() {
         val page = page ?: return
         val loader = page.chapter.pageLoader ?: return
-        loadJob = scope.launch {
-            loader.loadPage(page)
-        }
-        statusJob = scope.launch {
+        supervisorScope {
+            launchIO { loader.loadPage(page) }
             page.statusFlow.collectLatest { processStatus(it) }
         }
     }
@@ -168,7 +150,6 @@ class WebtoonPageHolder(
         cancelProgressJob()
 
         val page = page ?: return
-
         progressJob = scope.launch {
             page.progressFlow.collectLatest { value -> progressBar.setProgress(value) }
         }
@@ -179,7 +160,7 @@ class WebtoonPageHolder(
      *
      * @param status the new status of the page.
      */
-    private fun processStatus(status: Page.State) {
+    private suspend fun processStatus(status: Page.State) {
         when (status) {
             Page.State.QUEUE -> setQueued()
             Page.State.LOAD_PAGE -> setLoading()
@@ -203,9 +184,6 @@ class WebtoonPageHolder(
      */
     private fun cancelLoadJob() {
         loadJob?.cancel()
-        loadJob = null
-        statusJob?.cancel()
-        statusJob = null
     }
 
     /**
@@ -213,15 +191,6 @@ class WebtoonPageHolder(
      */
     private fun cancelProgressJob() {
         progressJob?.cancel()
-        progressJob = null
-    }
-
-    /**
-     * Unsubscribes from the read image header subscription.
-     */
-    private fun unsubscribeReadImageHeader() {
-        removeSubscription(readImageHeaderSubscription)
-        readImageHeaderSubscription = null
     }
 
     /**
@@ -230,8 +199,7 @@ class WebtoonPageHolder(
     private fun setQueued() {
         progressContainer.isVisible = true
         progressBar.isVisible = true
-        retryContainer?.isVisible = false
-        removeDecodeErrorLayout()
+        removeErrorLayout()
     }
 
     /**
@@ -240,8 +208,7 @@ class WebtoonPageHolder(
     private fun setLoading() {
         progressContainer.isVisible = true
         progressBar.isVisible = true
-        retryContainer?.isVisible = false
-        removeDecodeErrorLayout()
+        removeErrorLayout()
     }
 
     /**
@@ -250,55 +217,45 @@ class WebtoonPageHolder(
     private fun setDownloading() {
         progressContainer.isVisible = true
         progressBar.isVisible = true
-        retryContainer?.isVisible = false
-        removeDecodeErrorLayout()
+        removeErrorLayout()
     }
 
     /**
      * Called when the page is ready.
      */
-    private fun setImage() {
+    private suspend fun setImage() {
         progressContainer.isVisible = true
         progressBar.isVisible = true
         progressBar.completeAndFadeOut()
-        retryContainer?.isVisible = false
-        removeDecodeErrorLayout()
+        removeErrorLayout()
 
-        unsubscribeReadImageHeader()
         val streamFn = page?.stream ?: return
 
-        var openStream: InputStream? = null
-        readImageHeaderSubscription = Observable
-            .fromCallable {
-                val stream = streamFn().buffered(16)
-                openStream = process(stream)
+        val (openStream, isAnimated) = withIOContext {
+            val stream = streamFn().buffered(16)
+            val openStream = process(stream)
 
-                ImageUtil.isAnimatedAndSupported(stream)
-            }
-            .subscribeOn(Schedulers.io())
-            .observeOn(AndroidSchedulers.mainThread())
-            .doOnNext { isAnimated ->
-                frame.setImage(
-                    openStream!!,
-                    isAnimated,
-                    ReaderPageImageView.Config(
-                        zoomDuration = viewer.config.doubleTapAnimDuration,
-                        minimumScaleType = SubsamplingScaleImageView.SCALE_TYPE_FIT_WIDTH,
-                        cropBorders =
-                        if (viewer.hasMargins) {
-                            viewer.config.verticalCropBorders
-                        } else {
-                            viewer.config.webtoonCropBorders
-                        },
-                    ),
-                )
-            }
-            // Keep the Rx stream alive to close the input stream only when unsubscribed
-            .flatMap { Observable.never<Unit>() }
-            .doOnUnsubscribe { openStream?.close() }
-            .subscribe({}, {})
+            val isAnimated = ImageUtil.isAnimatedAndSupported(stream)
+            Pair(openStream, isAnimated)
+        }
 
-        addSubscription(readImageHeaderSubscription)
+        withUIContext {
+            frame.setImage(
+                openStream,
+                isAnimated,
+                ReaderPageImageView.Config(
+                    zoomDuration = viewer.config.doubleTapAnimDuration,
+                    minimumScaleType = SubsamplingScaleImageView.SCALE_TYPE_FIT_WIDTH,
+                    cropBorders = viewer.config.run {
+                        if (viewer.hasMargins) { verticalCropBorders } else { webtoonCropBorders }
+                    },
+                ),
+            )
+        }
+        // Suspend the coroutine to close the input stream only when the WebtoonPageHolder is recycled
+        suspendCancellableCoroutine<Nothing> { continuation ->
+            continuation.invokeOnCancellation { openStream.close() }
+        }
     }
 
     private fun process(imageStream: BufferedInputStream): InputStream {
@@ -319,7 +276,7 @@ class WebtoonPageHolder(
      */
     private fun setError() {
         progressContainer.isVisible = false
-        initRetryLayout().isVisible = true
+        showErrorLayout(false)
     }
 
     /**
@@ -334,7 +291,7 @@ class WebtoonPageHolder(
      */
     private fun onImageDecodeError() {
         progressContainer.isVisible = false
-        initDecodeErrorLayout().isVisible = true
+        showErrorLayout(true)
     }
 
     /**
@@ -356,97 +313,25 @@ class WebtoonPageHolder(
         return progress
     }
 
-    /**
-     * Initializes a button to retry pages.
-     */
-    private fun initRetryLayout(): ViewGroup {
-        if (retryContainer != null) return retryContainer!!
-
-        retryContainer = FrameLayout(context)
-        frame.addView(retryContainer, MATCH_PARENT, parentHeight)
-
-        AppCompatButton(context).apply {
-            layoutParams = FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-                setMargins(0, parentHeight / 4, 0, 0)
-            }
-            setText(R.string.retry)
-            setOnClickListener {
+    private fun showErrorLayout(withOpenInWebView: Boolean): ReaderErrorBinding {
+        if (errorLayout == null) {
+            errorLayout = ReaderErrorBinding.inflate(LayoutInflater.from(context), frame, true).root
+            errorLayout?.binding?.actionRetry?.setOnClickListener {
                 page?.let { it.chapter.pageLoader?.retryPage(it) }
             }
-
-            retryContainer!!.addView(this)
         }
-        return retryContainer!!
+        val imageUrl = if (withOpenInWebView) {
+            page?.imageUrl
+        } else {
+            viewer.activity.viewModel.getChapterUrl(page?.chapter?.chapter)
+        }
+        return errorLayout!!.configureView(imageUrl)
     }
 
-    /**
-     * Initializes a decode error layout.
-     */
-    private fun initDecodeErrorLayout(): ViewGroup {
-        if (decodeErrorLayout != null) return decodeErrorLayout!!
-
-        val margins = 8.dpToPx
-
-        val decodeLayout = LinearLayout(context).apply {
-            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, parentHeight).apply {
-                setMargins(0, parentHeight / 6, 0, 0)
-            }
-            gravity = Gravity.CENTER_HORIZONTAL
-            orientation = LinearLayout.VERTICAL
-        }
-        decodeErrorLayout = decodeLayout
-
-        TextView(context).apply {
-            layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
-                setMargins(0, margins, 0, margins)
-            }
-            gravity = Gravity.CENTER
-            setText(R.string.decode_image_error)
-
-            decodeLayout.addView(this)
-        }
-
-        AppCompatButton(context).apply {
-            layoutParams = FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
-                setMargins(0, margins, 0, margins)
-            }
-            setText(R.string.retry)
-            setOnClickListener {
-                page?.let { it.chapter.pageLoader?.retryPage(it) }
-            }
-
-            decodeLayout.addView(this)
-        }
-
-        val imageUrl = page?.imageUrl
-        if (imageUrl != null && imageUrl.startsWith("http")) {
-            AppCompatButton(context).apply {
-                layoutParams = FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
-                    setMargins(0, margins, 0, margins)
-                }
-                setText(R.string.open_in_browser)
-                setOnClickListener {
-                    val intent = Intent(Intent.ACTION_VIEW, imageUrl.toUri())
-                    context.startActivity(intent)
-                }
-
-                decodeLayout.addView(this)
-            }
-        }
-
-        frame.addView(decodeLayout)
-        return decodeLayout
-    }
-
-    /**
-     * Removes the decode error layout from the holder, if found.
-     */
-    private fun removeDecodeErrorLayout() {
-        val layout = decodeErrorLayout
-        if (layout != null) {
-            frame.removeView(layout)
-            decodeErrorLayout = null
+    private fun removeErrorLayout() {
+        errorLayout?.let {
+            frame.removeView(it)
+            errorLayout = null
         }
     }
 }

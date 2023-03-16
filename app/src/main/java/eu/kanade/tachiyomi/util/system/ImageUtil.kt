@@ -17,10 +17,12 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.webkit.MimeTypeMap
 import androidx.annotation.ColorInt
+import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.alpha
 import androidx.core.graphics.blue
 import androidx.core.graphics.green
 import androidx.core.graphics.red
+import androidx.core.graphics.scale
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.R
 import tachiyomi.decoder.Format
@@ -36,6 +38,7 @@ import java.net.URLConnection
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 object ImageUtil {
 
@@ -99,7 +102,7 @@ object ImageUtil {
                 Format.Webp -> type.isAnimated && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
                 else -> false
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
         }
         return false
     }
@@ -280,12 +283,16 @@ object ImageUtil {
         }
         val isLandscape = context.resources.configuration?.orientation == Configuration.ORIENTATION_LANDSCAPE
         if (darkBG) {
-            return if (!isLandscape && image.getPixel(left, bot).isWhite && image.getPixel(right, bot).isWhite) {
+            return if (!isLandscape && image.getPixel(left, bot).isWhite &&
+                image.getPixel(right, bot).isWhite
+            ) {
                 GradientDrawable(
                     GradientDrawable.Orientation.TOP_BOTTOM,
                     intArrayOf(blackPixel, blackPixel, backgroundColor, backgroundColor),
                 )
-            } else if (!isLandscape && image.getPixel(left, top).isWhite && image.getPixel(right, top).isWhite) {
+            } else if (!isLandscape && image.getPixel(left, top).isWhite &&
+                image.getPixel(right, top).isWhite
+            ) {
                 GradientDrawable(
                     GradientDrawable.Orientation.TOP_BOTTOM,
                     intArrayOf(backgroundColor, backgroundColor, blackPixel, blackPixel),
@@ -320,23 +327,6 @@ object ImageUtil {
             )
         }
         return ColorDrawable(backgroundColor)
-    }
-
-    /**
-     * Check whether the image is a double-page spread
-     * @return true if the width is greater than the height
-     */
-    fun isDoublePage(imageStream: InputStream): Boolean {
-        imageStream.mark(imageStream.available() + 1)
-
-        val imageBytes = imageStream.readBytes()
-
-        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, options)
-
-        imageStream.reset()
-
-        return options.outWidth > options.outHeight
     }
 
     fun splitBitmap(
@@ -426,18 +416,20 @@ object ImageUtil {
     }
 
     fun mergeBitmaps(
-        imageBitmap: Bitmap,
-        imageBitmap2: Bitmap,
+        iBitmap: Bitmap,
+        iBitmap2: Bitmap,
         isLTR: Boolean,
         @ColorInt background: Int = Color.WHITE,
         hingeGap: Int = 0,
         context: Context? = null,
         progressCallback: ((Int) -> Unit)? = null,
     ): ByteArrayInputStream {
-        val height = imageBitmap.height
-        val width = imageBitmap.width
-        val height2 = imageBitmap2.height
-        val width2 = imageBitmap2.width
+        var imageBitmap = iBitmap
+        var imageBitmap2 = iBitmap2
+        var height = imageBitmap.height
+        var width = imageBitmap.width
+        var height2 = imageBitmap2.height
+        var width2 = imageBitmap2.width
         val maxHeight = max(height, height2)
         val maxWidth = max(width, width2)
         val adjustedHingeGap = context?.let {
@@ -448,19 +440,33 @@ object ImageUtil {
         val result = Bitmap.createBitmap((maxWidth * 2) + adjustedHingeGap, maxHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(result)
         canvas.drawColor(background)
+        val widthAndHinge = maxWidth + adjustedHingeGap
+        if (imageBitmap.height != maxHeight && imageBitmap.width != maxWidth) {
+            val minRatio = min(maxHeight / height.toFloat(), maxWidth / width.toFloat())
+            imageBitmap = imageBitmap.scale((width * minRatio).toInt(), (height * minRatio).toInt())
+        }
+        height = imageBitmap.height
+        width = imageBitmap.width
         val upperPart = Rect(
-            if (isLTR) max(maxWidth - imageBitmap.width, 0) else maxWidth + adjustedHingeGap,
-            (maxHeight - imageBitmap.height) / 2,
-            (if (isLTR) max(maxWidth - imageBitmap.width, 0) else maxWidth + adjustedHingeGap) + imageBitmap.width,
-            imageBitmap.height + (maxHeight - imageBitmap.height) / 2,
+            if (isLTR) max(maxWidth - width, 0) else widthAndHinge,
+            (maxHeight - height) / 2,
+            (if (isLTR) max(maxWidth - width, 0) else widthAndHinge) + width,
+            height + (maxHeight - height) / 2,
         )
         canvas.drawBitmap(imageBitmap, imageBitmap.rect, upperPart, null)
         progressCallback?.invoke(98)
+        if (imageBitmap2.height != maxHeight && imageBitmap2.width != maxWidth) {
+            val minRatio = min(maxHeight / height2.toFloat(), maxWidth / width2.toFloat())
+            imageBitmap2 =
+                imageBitmap2.scale((width2 * minRatio).toInt(), (height2 * minRatio).toInt())
+        }
+        height2 = imageBitmap2.height
+        width2 = imageBitmap2.width
         val bottomPart = Rect(
-            if (!isLTR) max(maxWidth - imageBitmap2.width, 0) else maxWidth + adjustedHingeGap,
-            (maxHeight - imageBitmap2.height) / 2,
-            (if (!isLTR) max(maxWidth - imageBitmap2.width, 0) else maxWidth + adjustedHingeGap) + imageBitmap2.width,
-            imageBitmap2.height + (maxHeight - imageBitmap2.height) / 2,
+            if (!isLTR) max(maxWidth - width2, 0) else widthAndHinge,
+            (maxHeight - height2) / 2,
+            (if (!isLTR) max(maxWidth - width2, 0) else widthAndHinge) + width2,
+            height2 + (maxHeight - height2) / 2,
         )
         canvas.drawBitmap(imageBitmap2, imageBitmap2.rect, bottomPart, null)
         progressCallback?.invoke(99)
@@ -633,11 +639,106 @@ object ImageUtil {
             abs(color1.blue - color2.blue) < 30
     }
 
+    /**
+     * Returns if this bitmap matches what would be (if rightSide param is true)
+     * the single left side page, or the second page to read in a RTL book, first in an LTR book.
+     *
+     * @return An int based on confidence, 0 meaning not padded, 1 meaning barely padded,
+     * 2 meaning likely padded, 3 meaining definitely padded
+     * @param rightSide: When true, check if its a single left side page, else right side
+     */
+    fun Bitmap.isPagePadded(rightSide: Boolean): Int {
+        val booleans = listOf(true, false)
+        return when {
+            booleans.any { isSidePadded(!rightSide, checkWhite = it) > 1 } -> 0
+            booleans.any {
+                when (isSidePadded(rightSide, checkWhite = it)) {
+                    2 -> true
+                    1 -> isSideLonger(rightSide, checkWhite = it)
+                    else -> false
+                }
+            } -> 3
+            booleans.any { isSideLonger(rightSide, checkWhite = it) } -> 2
+            booleans.any { isOneSideMorePadded(rightSide, checkWhite = it) } -> 1
+            else -> 0
+        }
+    }
+
+    /**
+     * Returns if one side has a vertical padding and the other side does not,
+     * 2 for def, 1 for maybe, 0 if not at all
+     */
+    private fun Bitmap.isSidePadded(rightSide: Boolean, checkWhite: Boolean, halfCheck: Boolean = false): Int {
+        val left = (width * 0.0275).toInt()
+        val right = width - left
+        val paddedSide = if (rightSide) right else left
+        val unPaddedSide = if (!rightSide) right else left
+        val paddedCount = (1 until 50).count {
+            // if all of a side is padded (the left page usually has a white padding on the right when scanned)
+            getPixel(paddedSide, (height * (it / 50f)).roundToInt()).isWhiteOrDark(checkWhite)
+        }
+        val isNotFullyUnPadded = !(1 until 50).all {
+            // and if all of the other side isn't padded
+            getPixel(unPaddedSide, (height * (it / 50f)).roundToInt()).isWhiteOrDark(checkWhite)
+        }
+        return if (isNotFullyUnPadded) {
+            if (paddedCount == 49) 2 else if (paddedCount >= (if (halfCheck) 25 else 47)) 1 else 0
+        } else {
+            0
+        }
+    }
+
+    /** Returns if one side has a longer streak (of white or black) than the other */
+    private fun Bitmap.isSideLonger(rightSide: Boolean, checkWhite: Boolean): Boolean {
+        if (isSidePadded(rightSide, checkWhite, true) == 0) return false
+        val left = (width * 0.0275).toInt()
+        val right = width - left
+        val step = 70
+        val list = listOf((1 until step), (1 until step).reversed())
+        val streakFunc: (Int) -> Int = { side ->
+            list.maxOf { range ->
+                var count = 0
+                for (it in range) {
+                    val pixel = getPixel(side, (height * (it / step.toFloat())).roundToInt())
+                    if (pixel.isWhiteOrDark(checkWhite)) ++count else return@maxOf count
+                }
+                count
+            }
+        }
+        val paddedSide = if (rightSide) right else left
+        val unPaddedSide = if (!rightSide) right else left
+        return streakFunc(paddedSide) > streakFunc(unPaddedSide)
+    }
+
+    /** Returns if one side is more horizontally padded than the other */
+    private fun Bitmap.isOneSideMorePadded(rightSide: Boolean, checkWhite: Boolean): Boolean {
+        val middle = (height * 0.475).roundToInt()
+        val middle2 = (height * 0.525).roundToInt()
+        val widthFactor = max(1, (width / 400f).roundToInt())
+        val paddedSide: (Int) -> Int = { if (!rightSide) width - it * widthFactor else it * widthFactor }
+        val unPaddedSide: (Int) -> Int = { if (rightSide) width - it * widthFactor else it * widthFactor }
+        return run stop@{
+            (1 until 37).any {
+                if (!getPixel(paddedSide(it), middle).isWhiteOrDark(checkWhite)) return@stop false
+                if (!getPixel(paddedSide(it), middle2).isWhiteOrDark(checkWhite)) return@stop false
+                !getPixel(unPaddedSide(it), middle).isWhiteOrDark(checkWhite) ||
+                    !getPixel(unPaddedSide(it), middle2).isWhiteOrDark(checkWhite)
+            }
+        }
+    }
+
+    private fun Int.isWhiteOrDark(checkWhite: Boolean): Boolean =
+        if (checkWhite) isWhite else isDark
+
     private val Int.isWhite: Boolean
         get() = red + blue + green > 740
 
     private val Int.isDark: Boolean
-        get() = red < 40 && blue < 40 && green < 40 && alpha > 200
+        get() {
+            val bgArray = FloatArray(3)
+            ColorUtils.colorToHSL(this, bgArray)
+            return red < 40 && blue < 40 && green < 40 && alpha > 200 && bgArray[1] <= 0.2f
+        }
 
     fun getPercentOfColor(
         @ColorInt color: Int,

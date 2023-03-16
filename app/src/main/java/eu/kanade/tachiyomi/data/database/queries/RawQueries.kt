@@ -61,18 +61,6 @@ fun getRecentsQuery(search: String, offset: Int, isResuming: Boolean) =
     ${limitAndOffset(true, isResuming, offset)}
 """
 
-/**
- * Query to get the recently added manga
- */
-fun getRecentAdditionsQuery(search: String, endless: Boolean, offset: Int, isResuming: Boolean) =
-    """
-    SELECT ${Manga.TABLE}.${Manga.COL_URL} as mangaUrl, * FROM ${Manga.TABLE}
-    WHERE ${Manga.COL_FAVORITE} = 1
-    AND lower(${Manga.COL_TITLE}) LIKE '%$search%'
-    ORDER BY ${Manga.COL_DATE_ADDED} DESC
-    ${limitAndOffset(endless, isResuming, offset)}
-"""
-
 fun limitAndOffset(endless: Boolean, isResuming: Boolean, offset: Int): String {
     return when {
         isResuming && endless && offset > 0 -> "LIMIT $offset"
@@ -82,25 +70,26 @@ fun limitAndOffset(endless: Boolean, isResuming: Boolean, offset: Int): String {
 }
 
 /**
- * Query to get the manga with recently uploaded chapters
+ * Query to get the recently read chapters of manga from the library up to a date.
+ * The max_last_read table contains the most recent chapters grouped by manga
+ * The select statement returns all information of chapters that have the same id as the chapter in max_last_read
+ * and are read after the given time period
  */
-fun getRecentsQueryDistinct(search: String, offset: Int = 0, isResuming: Boolean) =
+fun getRecentHistoryUngrouped(
+    search: String = "",
+    offset: Int = 0,
+    isResuming: Boolean,
+) =
     """
-    SELECT ${Manga.TABLE}.${Manga.COL_URL} as mangaUrl, ${Manga.TABLE}.*, ${Chapter.TABLE}.*
+    SELECT ${Manga.TABLE}.${Manga.COL_URL} as mangaUrl, ${Manga.TABLE}.*, ${Chapter.TABLE}.*, ${History.TABLE}.*
     FROM ${Manga.TABLE}
     JOIN ${Chapter.TABLE}
     ON ${Manga.TABLE}.${Manga.COL_ID} = ${Chapter.TABLE}.${Chapter.COL_MANGA_ID}
-    JOIN (
-        SELECT ${Chapter.TABLE}.${Chapter.COL_MANGA_ID},${Chapter.TABLE}.${Chapter.COL_ID},MAX(${Chapter.TABLE}.${Chapter.COL_DATE_FETCH}) 
-        FROM ${Chapter.TABLE} JOIN ${Manga.TABLE}
-        ON ${Manga.TABLE}.${Manga.COL_ID} = ${Chapter.TABLE}.${Chapter.COL_MANGA_ID}
-        GROUP BY ${Chapter.TABLE}.${Chapter.COL_MANGA_ID}) AS newest_chapter
-    ON ${Chapter.TABLE}.${Chapter.COL_MANGA_ID} = newest_chapter.${Chapter.COL_MANGA_ID}
-    WHERE ${Manga.COL_FAVORITE} = 1
-    AND newest_chapter.${Chapter.COL_ID} = ${Chapter.TABLE}.${Chapter.COL_ID}
-    AND ${Chapter.COL_DATE_FETCH} > ${Manga.COL_DATE_ADDED}
-    AND lower(${Manga.COL_TITLE}) LIKE '%$search%'
-    ORDER BY ${Chapter.COL_DATE_FETCH} DESC
+    JOIN ${History.TABLE}
+    ON ${Chapter.TABLE}.${Chapter.COL_ID} = ${History.TABLE}.${History.COL_CHAPTER_ID}
+    AND ${History.TABLE}.${History.COL_LAST_READ} > 0
+    AND lower(${Manga.TABLE}.${Manga.COL_TITLE}) LIKE '%$search%'
+    ORDER BY ${History.TABLE}.${History.COL_LAST_READ} DESC
     ${limitAndOffset(true, isResuming, offset)}
 """
 
@@ -132,30 +121,6 @@ fun getRecentMangasLimitQuery(
     AND max_last_read.${History.COL_LAST_READ} > 0
     AND lower(${Manga.TABLE}.${Manga.COL_TITLE}) LIKE '%$search%'
     ORDER BY max_last_read.${History.COL_LAST_READ} DESC
-    ${limitAndOffset(true, isResuming, offset)}
-"""
-
-/**
- * Query to get the recently read chapters of manga from the library up to a date.
- * The max_last_read table contains the most recent chapters grouped by manga
- * The select statement returns all information of chapters that have the same id as the chapter in max_last_read
- * and are read after the given time period
- */
-fun getRecentHistoryUngrouped(
-    search: String = "",
-    offset: Int = 0,
-    isResuming: Boolean,
-) =
-    """
-    SELECT ${Manga.TABLE}.${Manga.COL_URL} as mangaUrl, ${Manga.TABLE}.*, ${Chapter.TABLE}.*, ${History.TABLE}.*
-    FROM ${Manga.TABLE}
-    JOIN ${Chapter.TABLE}
-    ON ${Manga.TABLE}.${Manga.COL_ID} = ${Chapter.TABLE}.${Chapter.COL_MANGA_ID}
-    JOIN ${History.TABLE}
-    ON ${Chapter.TABLE}.${Chapter.COL_ID} = ${History.TABLE}.${History.COL_CHAPTER_ID}
-    AND ${History.TABLE}.${History.COL_LAST_READ} > 0
-    AND lower(${Manga.TABLE}.${Manga.COL_TITLE}) LIKE '%$search%'
-    ORDER BY ${History.TABLE}.${History.COL_LAST_READ} DESC
     ${limitAndOffset(true, isResuming, offset)}
 """
 

@@ -1102,4 +1102,16 @@
     <string name="not_rated">Não avaliados</string>
     <string name="view_all">Veja todos</string>
     <string name="skipped_reason_not_always_update">Ignorado porque a série não requer atualizações</string>
+    <string name="error_user_agent_string_invalid">Valor de user agent inválido</string>
+    <string name="allow_deleting_bookmarked_chapters">Permitir a eliminação de capítulos marcados</string>
+    <string name="popular">Famoso</string>
+    <string name="skip_dupe_chapters">Pular capítulos duplicados</string>
+    <string name="appwidget_updates_description">Veja os seus itens da biblioteca atualizados recentemente</string>
+    <string name="appwidget_unavailable_locked">Widget não disponível quando o bloqueio de aplicações está ativo</string>
+    <string name="read_duration_info">Tempo gasto no leitor, com base no histórico do capítulo</string>
+    <string name="failed_to_update_">Falha ao atualizar %1$s</string>
+    <string name="hide_in_library_items">Ocultar entradas existentes na biblioteca</string>
+    <string name="mean_tracking_score">Pontuação média de rastreamento</string>
+    <string name="collapse_grouped_chapters">Recolher capítulos agrupados</string>
+    <string name="show_more_chapters">Mostrar mais capítulos</string>
 </resources>

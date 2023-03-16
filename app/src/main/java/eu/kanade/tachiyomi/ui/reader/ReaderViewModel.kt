@@ -20,6 +20,7 @@ import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
+import eu.kanade.tachiyomi.data.track.TrackService
 import eu.kanade.tachiyomi.source.LocalSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceManager
@@ -145,7 +146,7 @@ class ReaderViewModel(
         chaptersForReader.sortedWith(chapterSort.sortComparator(true)).map(::ReaderChapter)
     }
 
-    var chapterItems = emptyList<ReaderChapterItem>()
+    private var chapterItems = emptyList<ReaderChapterItem>()
 
     private var scope = CoroutineScope(Job() + Dispatchers.Default)
 
@@ -173,17 +174,6 @@ class ReaderViewModel(
     }
 
     /**
-     * Called when the presenter instance is being saved. It saves the currently active chapter
-     * id and the last page read.
-     */
-    fun onSave() {
-        val currentChapter = getCurrentChapter()
-        if (currentChapter != null) {
-            currentChapter.requestedPage = currentChapter.chapter.last_page_read
-        }
-    }
-
-    /**
      * Called when the user pressed the back button and is going to leave the reader. Used to
      * trigger deletion of the downloaded chapters.
      */
@@ -205,7 +195,7 @@ class ReaderViewModel(
      * Called when the activity is saved and not changing configurations. It updates the database
      * to persist the current progress of the active chapter.
      */
-    fun onSaveInstanceStateNonConfigurationChange() {
+    fun onSaveInstanceState() {
         val currentChapter = getCurrentChapter() ?: return
         saveChapterProgress(currentChapter)
     }
@@ -367,12 +357,6 @@ class ReaderViewModel(
 
         Timber.d("Loading ${chapter.chapter.url}")
 
-//        activeChapterSubscription?.unsubscribe()
-//        activeChapterSubscription = getLoadObservable(loader, chapter)
-//            .toCompletable()
-//            .onErrorComplete()
-//            .subscribe()
-//            .also(::add)
         withIOContext {
             try {
                 loadChapter(loader, chapter)
@@ -396,7 +380,6 @@ class ReaderViewModel(
         loader.loadChapter(chapter)
 
         val chapterPos = chapterList.indexOf(chapter)
-//        chapter.requestedPage = chapter.chapter.last_page_read
         val newChapters = ViewerChapters(
             chapter,
             chapterList.getOrNull(chapterPos - 1),
@@ -602,10 +585,11 @@ class ReaderViewModel(
     fun saveCurrentChapterReadingProgress() = getCurrentChapter()?.let { saveReadingProgress(it) }
 
     /**
-     * Saves this [readerChapter] progress (last read page and whether it's read).
+     * Saves this [readerChapter]'s progress (last read page and whether it's read).
      * If incognito mode isn't on or has at least 1 tracker
      */
     private fun saveChapterProgress(readerChapter: ReaderChapter) {
+        readerChapter.requestedPage = readerChapter.chapter.last_page_read
         db.getChapter(readerChapter.chapter.id!!).executeAsBlocking()?.let { dbChapter ->
             readerChapter.chapter.bookmark = dbChapter.bookmark
         }
@@ -649,12 +633,12 @@ class ReaderViewModel(
         return state.value.viewerChapters?.currChapter
     }
 
-    fun getChapterUrl(): String? {
+    fun getChapterUrl(mainChapter: Chapter? = null): String? {
         val manga = manga ?: return null
         val source = getSource() ?: return null
-        val chapter = getCurrentChapter()?.chapter ?: return null
-        val chapterUrl = source.getChapterUrl(chapter)
-        return chapterUrl.takeIf { it.isNotEmpty() } ?: source.getChapterUrl(manga, chapter)
+        val chapter = mainChapter ?: getCurrentChapter()?.chapter ?: return null
+        val chapterUrl = try { source.getChapterUrl(chapter) } catch (_: Exception) { null }
+        return chapterUrl.takeIf { !it.isNullOrBlank() } ?: source.getChapterUrl(manga, chapter)
     }
 
     fun getSource() = manga?.source?.let { sourceManager.getOrStub(it) } as? HttpSource
@@ -729,7 +713,6 @@ class ReaderViewModel(
         Timber.i("Manga orientation is ${manga.orientationType}")
 
         viewModelScope.launchIO {
-//            delay(250)
             db.updateViewerFlags(manga).executeAsBlocking()
             val currChapters = state.value.viewerChapters
             if (currChapters != null) {
@@ -964,7 +947,10 @@ class ReaderViewModel(
 
         launchIO {
             val newChapterRead = readerChapter.chapter.chapter_number
-            updateTrackChapterRead(db, preferences, manga?.id, newChapterRead, true)
+            val errors = updateTrackChapterRead(db, preferences, manga?.id, newChapterRead, true)
+            if (errors.isNotEmpty()) {
+                eventChannel.send(Event.ShareTrackingError(errors))
+            }
         }
     }
 
@@ -1011,5 +997,6 @@ class ReaderViewModel(
 
         data class SavedImage(val result: SaveImageResult) : Event()
         data class ShareImage(val file: File, val page: ReaderPage, val extraPage: ReaderPage? = null) : Event()
+        data class ShareTrackingError(val errors: List<Pair<TrackService, String?>>) : Event()
     }
 }
