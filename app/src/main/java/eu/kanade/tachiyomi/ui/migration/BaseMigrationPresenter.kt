@@ -42,9 +42,9 @@ abstract class BaseMigrationPresenter<T : BaseMigrationInterface>(
             )
             withContext(Dispatchers.Main) {
                 if (selectedSource != null) {
-                    controller?.setMigrationManga(selectedSource!!.first, mangaItems[selectedSource!!.second])
+                    view?.setMigrationManga(selectedSource!!.first, mangaItems[selectedSource!!.second])
                 } else {
-                    controller?.setMigrationSources(sourceItems)
+                    view?.setMigrationSources(sourceItems)
                 }
             }
         }
@@ -54,7 +54,7 @@ abstract class BaseMigrationPresenter<T : BaseMigrationInterface>(
         val header = SelectionHeader()
         val sourceGroup = library.groupBy { it.source }
         val sortOrder = PreferenceValues.MigrationSourceOrder.fromPreference(preferences)
-        val extensions = extensionManager.installedExtensions
+        val extensions = extensionManager.installedExtensionsFlow.value
         val obsoleteSources =
             extensions.filter { it.isObsolete }.map { it.sources }.flatten().map { it.id }
 
@@ -102,9 +102,9 @@ abstract class BaseMigrationPresenter<T : BaseMigrationInterface>(
         )
         withContext(Dispatchers.Main) {
             if (selectedSource != null) {
-                controller?.setMigrationManga(selectedSource!!.first, mangaItems[selectedSource!!.second])
+                view?.setMigrationManga(selectedSource!!.first, mangaItems[selectedSource!!.second])
             } else {
-                controller?.setMigrationSources(sourceItems)
+                view?.setMigrationSources(sourceItems)
             }
         }
     }
@@ -112,14 +112,14 @@ abstract class BaseMigrationPresenter<T : BaseMigrationInterface>(
     fun setSelectedSource(source: Source) {
         selectedSource = source.name to source.id
         presenterScope.launch {
-            withUIContext { controller?.setMigrationManga(source.name, mangaItems[source.id]) }
+            withUIContext { view?.setMigrationManga(source.name, mangaItems[source.id]) }
         }
     }
 
     fun deselectSource() {
         selectedSource = null
         presenterScope.launch {
-            withUIContext { controller?.setMigrationSources(sourceItems) }
+            withUIContext { view?.setMigrationSources(sourceItems) }
         }
     }
 }

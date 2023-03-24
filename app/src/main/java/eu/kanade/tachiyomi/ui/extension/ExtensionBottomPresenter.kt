@@ -14,11 +14,10 @@ import eu.kanade.tachiyomi.util.system.withUIContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import uy.kohesive.injekt.api.get
 
 typealias ExtensionTuple =
     Triple<List<Extension.Installed>, List<Extension.Untrusted>, List<Extension.Available>>
@@ -39,33 +38,33 @@ class ExtensionBottomPresenter() : BaseMigrationPresenter<ExtensionBottomSheet>(
         super.onCreate()
         presenterScope.launch {
             val extensionJob = async {
-                extensionManager.findAvailableExtensionsAsync()
+                extensionManager.findAvailableExtensions()
                 extensions = toItems(
                     Triple(
-                        extensionManager.installedExtensions,
-                        extensionManager.untrustedExtensions,
-                        extensionManager.availableExtensions,
+                        extensionManager.installedExtensionsFlow.value,
+                        extensionManager.untrustedExtensionsFlow.value,
+                        extensionManager.availableExtensionsFlow.value,
                     ),
                 )
-                withContext(Dispatchers.Main) { controller?.setExtensions(extensions, false) }
+                withContext(Dispatchers.Main) { view?.setExtensions(extensions, false) }
             }
             val migrationJob = async { firstTimeMigration() }
             listOf(migrationJob, extensionJob).awaitAll()
         }
         presenterScope.launch {
-            extensionManager.downloadRelay
+            extensionManager.downloadRelay.asSharedFlow()
                 .collect {
                     if (it.first.startsWith("Finished")) {
                         firstLoad = true
                         currentDownloads.clear()
                         extensions = toItems(
                             Triple(
-                                extensionManager.installedExtensions,
-                                extensionManager.untrustedExtensions,
-                                extensionManager.availableExtensions,
+                                extensionManager.installedExtensionsFlow.value,
+                                extensionManager.untrustedExtensionsFlow.value,
+                                extensionManager.availableExtensionsFlow.value,
                             ),
                         )
-                        withUIContext { controller?.setExtensions(extensions) }
+                        withUIContext { view?.setExtensions(extensions) }
                         return@collect
                     }
                     val extension = extensions.find { item ->
@@ -81,7 +80,7 @@ class ExtensionBottomPresenter() : BaseMigrationPresenter<ExtensionBottomSheet>(
                     }
                     val item = updateInstallStep(extension.extension, it.second.first, it.second.second)
                     if (item != null) {
-                        withUIContext { controller?.downloadUpdate(item) }
+                        withUIContext { view?.downloadUpdate(item) }
                     }
                 }
         }
@@ -91,18 +90,18 @@ class ExtensionBottomPresenter() : BaseMigrationPresenter<ExtensionBottomSheet>(
         presenterScope.launch {
             extensions = toItems(
                 Triple(
-                    extensionManager.installedExtensions,
-                    extensionManager.untrustedExtensions,
-                    extensionManager.availableExtensions,
+                    extensionManager.installedExtensionsFlow.value,
+                    extensionManager.untrustedExtensionsFlow.value,
+                    extensionManager.availableExtensionsFlow.value,
                 ),
             )
-            withContext(Dispatchers.Main) { controller?.setExtensions(extensions, false) }
+            withContext(Dispatchers.Main) { view?.setExtensions(extensions, false) }
         }
     }
 
     @Synchronized
     private fun toItems(tuple: ExtensionTuple): List<ExtensionItem> {
-        val context = controller?.context ?: return emptyList()
+        val context = view?.context ?: return emptyList()
         val activeLangs = preferences.enabledLanguages().get()
         val showNsfwSources = preferences.showNsfwSources().get()
 
@@ -190,7 +189,7 @@ class ExtensionBottomPresenter() : BaseMigrationPresenter<ExtensionBottomSheet>(
     }
 
     private fun extensionInstallDate(pkgName: String): Long {
-        val context = controller?.context ?: return 0
+        val context = view?.context ?: return 0
         return try {
             context.packageManager.getPackageInfo(pkgName, 0).firstInstallTime
         } catch (e: java.lang.Exception) {
@@ -199,7 +198,7 @@ class ExtensionBottomPresenter() : BaseMigrationPresenter<ExtensionBottomSheet>(
     }
 
     private fun extensionUpdateDate(pkgName: String): Long {
-        val context = controller?.context ?: return 0
+        val context = view?.context ?: return 0
         return try {
             context.packageManager.getPackageInfo(pkgName, 0).lastUpdateTime
         } catch (e: java.lang.Exception) {
@@ -249,23 +248,23 @@ class ExtensionBottomPresenter() : BaseMigrationPresenter<ExtensionBottomSheet>(
 
     fun updateExtension(extension: Extension.Installed) {
         val availableExt =
-            extensionManager.availableExtensions.find { it.pkgName == extension.pkgName } ?: return
+            extensionManager.availableExtensionsFlow.value.find { it.pkgName == extension.pkgName } ?: return
         installExtension(availableExt)
     }
 
     fun updateExtensions(extensions: List<Extension.Installed>) {
         if (extensions.isEmpty()) return
-        val context = controller?.context ?: return
+        val context = view?.context ?: return
         extensions.forEach {
             val pkgName = it.pkgName
             currentDownloads[pkgName] = InstallStep.Pending to null
             val item = updateInstallStep(it, InstallStep.Pending, null) ?: return@forEach
-            controller?.downloadUpdate(item)
+            view?.downloadUpdate(item)
         }
         val intent = ExtensionInstallService.jobIntent(
             context,
             extensions.mapNotNull { extension ->
-                extensionManager.availableExtensions.find { it.pkgName == extension.pkgName }
+                extensionManager.availableExtensionsFlow.value.find { it.pkgName == extension.pkgName }
             },
         )
         ContextCompat.startForegroundService(context, intent)
@@ -276,7 +275,9 @@ class ExtensionBottomPresenter() : BaseMigrationPresenter<ExtensionBottomSheet>(
     }
 
     fun findAvailableExtensions() {
-        extensionManager.findAvailableExtensions()
+        presenterScope.launch {
+            extensionManager.findAvailableExtensions()
+        }
     }
 
     fun trustSignature(signatureHash: String) {
